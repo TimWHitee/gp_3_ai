@@ -2,26 +2,14 @@
 from pydantic import BaseModel
 import numpy as np
 import pandas as pd
-
-app = FastAPI()
-
-class AnalyzeRequest(BaseModel):
-    ticker: str
-    articles: list[str]
-
-@app.post("/analyze")
-async def analyze(req: AnalyzeRequest):
-    proba = float(np.random.uniform(0.3, 0.9))  # заглушка
-    return {
-        "ticker": req.ticker,
-        "score": round(proba, 3),
-        "signal": "BUY" if proba > 0.7 else "WAIT"
-    }
-
 import contextlib
 import io
 import traceback
 from pydantic import BaseModel
+
+app = FastAPI()
+
+
 
 class ExecuteRequest(BaseModel):
     code: str
