@@ -71,3 +71,4 @@ git add .
 git commit -m "обновление скриптов и workflows"
 git push
 ```
+Дарья Осина
