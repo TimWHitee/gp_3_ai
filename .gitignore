@@ -6,3 +6,4 @@ n8n_data/
 models/*.cbm
 models/*.pkl
 data/*.csv
+a.py
