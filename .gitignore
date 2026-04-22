@@ -1,0 +1,8 @@
+﻿.env
+__pycache__/
+*.pyc
+*.pyo
+n8n_data/
+models/*.cbm
+models/*.pkl
+data/*.csv

@@ -1,0 +1,58 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -224,
+        -48
+      ],
+      "id": "cf95acc3-69d1-4734-9525-401fb503d8b8",
+      "name": "When chat message received",
+      "webhookId": "7737207e-21f1-4bf0-b2db-317ae0213367"
+    },
+    {
+      "parameters": {
+        "url": "http://fastapi:8000/check-imports",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -16,
+        -48
+      ],
+      "id": "fce64a9b-8d51-4f98-bb5d-17eacdebcac2",
+      "name": "HTTP Request"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "cfa315e9-521e-4a0e-b6c5-dcc87c69f29e",
+  "meta": {
+    "instanceId": "448ac833fd3e70a1638f7923f54c0cefb8016acb285d5c84b2d2100f6980c11e"
+  },
+  "id": "TgchuMsxzT9z5W2C",
+  "tags": []
+}
