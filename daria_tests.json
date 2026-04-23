@@ -1,0 +1,237 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "binaryPropertyName": "~/Downloads/iris.zip"
+      },
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        -1184,
+        448
+      ],
+      "id": "24875458-f33a-4d75-b21d-47ee94c65503",
+      "name": "Compression",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "model": "qwen3-vl:235b-instruct",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        496
+      ],
+      "id": "450e6136-d7d9-4139-a266-5712b69a86f2",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "YgvHbN136vykAHex",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://www.kaggle.com/api/v1/datasets/download/uciml/iris",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "~/Downloads/iris.zip"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1392,
+        448
+      ],
+      "id": "14e23c5a-921d-47bc-9924-b522ac795456",
+      "name": "HTTP Request",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -288,
+        256
+      ],
+      "id": "8f10bc10-3a4a-4d54-94b3-adb71459b6d8",
+      "name": "When chat message received",
+      "webhookId": "e6577196-c90e-4660-adc4-f9c32e76f01b"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=\nТВОЙ ГЛАВНЫЙ ЗАПРОС: \"{{ $json.chatInput }}\"\n\nYou are a Python data analysis assistant. You have access to a code execution tool.\n\nWhen the user asks to analyze data, build a model, create a chart, or do any computation — write Python code and send it to the /execute endpoint.\n\n## Available libraries\nnumpy, pandas, scikit-learn, matplotlib, seaborn, catboost\n\n## Rules for writing code\n- Always assign the final result to a variable named `result`\n- Use print() for intermediate output you want to see\n- Do not use plt.show() — save charts to file instead:\n  plt.savefig(\"/app/data/chart.png\", dpi=150, bbox_inches=\"tight\")\n- All file paths use /app/data/ prefix\n- Write clean, complete, runnable code — no placeholders, no \"TODO\"\n- If the task requires multiple steps, do them all in one code block\n\n## Response format\nAfter receiving the execution result:\n- If success=true: explain what the code did and summarize the result\n- If success=false: read the error, fix the code, and try again automatically\n- Never show raw JSON from the endpoint to the user\n\n## Example\nUser: \"посчитай среднее по колонке price в /app/data/sales.csv\"\n\nYour code:\nimport pandas as pd\ndf = pd.read_csv(\"/app/data/sales.csv\")\nresult = df[\"price\"].mean()\nprint(f\"Mean price: {result:.2f}\")\n\n## Available data\nAll datasets are located in /app/data/ directory.\nCurrent files:\n- /app/data/dataset.csv — stock news dataset with columns: date, ticker, headline, sentiment\n\nAlways load data with:\nimport pandas as pd\ndf = pd.read_csv(\"/app/data/dataset.csv\")",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        80,
+        256
+      ],
+      "id": "2bf99c28-d32c-4ee5-8cc6-ba7c035acd0d",
+      "name": "RODNENKEE DEEBSIG"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        112,
+        560
+      ],
+      "id": "3ee38144-eba3-4ad1-91b0-145dc1e4952f",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        0,
+        0
+      ],
+      "id": "67574325-8d31-4deb-a455-e551a610574e",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "url": "http://fastapi:8000/data/files",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        288,
+        528
+      ],
+      "id": "6904879a-a7a9-4e08-b687-c2fd69887ac0",
+      "name": "@tool GET FILES"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        432,
+        496
+      ],
+      "id": "0c6468c5-a61b-45ef-9f8d-260a987aabf4",
+      "name": "@tool EXEC"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "RODNENKEE DEEBSIG",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Compression",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "RODNENKEE DEEBSIG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "RODNENKEE DEEBSIG",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool GET FILES": {
+      "ai_tool": [
+        [
+          {
+            "node": "RODNENKEE DEEBSIG",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC": {
+      "ai_tool": [
+        [
+          {
+            "node": "RODNENKEE DEEBSIG",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "fd454732-5c25-4848-abd9-7e482960257a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6b0c0bd91c752735afbe59472f93bf7b8081e0fe6531ef3d12451e15fc927eaa"
+  },
+  "id": "6XJJlMU7riHNTe0M",
+  "tags": []
+}
