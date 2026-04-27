@@ -265,9 +265,15 @@ async def merge(req: MergeRequest):
         df1 = pd.read_csv(req.dataset1_path)
         df2 = pd.read_csv(req.dataset2_path)
         merged = df1.merge(df2, on=req.merge_field, how="inner", suffixes=("_1", "_2"))
+        
+        output_path = "/app/data/merged_dataset.csv"
+        merged.to_csv(output_path, index=False)  # <- этого не было
+        
         return {
-            "merged_path": "/app/data/merged_dataset.csv",
-            "rows": len(merged)
+            "success": True,
+            "merged_path": output_path,
+            "rows": len(merged),
+            "columns": merged.columns.tolist()
         }
     except Exception:
         return {
