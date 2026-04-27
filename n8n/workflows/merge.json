@@ -1,0 +1,450 @@
+{
+  "name": "My workflow 3",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -80,
+        16
+      ],
+      "id": "34f86256-6cfc-48a4-bdd7-fd1efe39991f",
+      "name": "When chat message received",
+      "webhookId": "3bb3e430-d848-41b7-9c0b-799876e5a169"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        784,
+        304
+      ],
+      "id": "5fd32e5e-8eda-4cee-bfa2-10067e5309fa",
+      "name": "@tool EXEC"
+    },
+    {
+      "parameters": {
+        "url": "http://fastapi:8000/data/files",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        624,
+        336
+      ],
+      "id": "01df7c08-d6c9-4f9d-8776-b9607407d5fa",
+      "name": "@tool GET FILES"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a file download agent. Your task is to download a dataset from the provided URL.\n\nYou have access to these tools:\n- DOWNLOAD TOOL (POST /data/download) — downloads a file by URL into /app/data\n- EXEC tool — executes Python code\n\nInstructions:\n\n1. Use DOWNLOAD TOOL to download the file:\n   POST /data/download\n   {\n     \"url\": \"<URL from input>\",\n     \"filename\": \"dataset.zip\"\n   }\n   Check that response has \"success\": true\n\n2. If the downloaded file is a zip archive — extract it using EXEC tool:\n   import os, zipfile\n   output = \"/app/data/dataset.zip\"\n   if zipfile.is_zipfile(output):\n       with zipfile.ZipFile(output, \"r\") as z:\n           z.extractall(\"/app/data\")\n       os.remove(output)\n   print(os.listdir(\"/app/data\"))\n\n3. Verify CSV files exist:\n   files = [f for f in os.listdir(\"/app/data\") if f.endswith(\".csv\")]\n   assert len(files) > 0, \"No CSV found — retry!\"\n\n4. Return ONLY this JSON (no other text):\n{\n  \"dataset_path\": \"/app/data/file1.csv, /app/data/file2.csv\"\n}\n4. Return ONLY this JSON, no markdown, no backticks, no other text:\n{\"dataset_path\": \"/app/data/file1.csv,/app/data/file2.csv\"}\n\nCRITICAL: \n- No ```json blocks\n- No \\n characters  \n- No spaces after commas in the path list\n- Just raw JSON on a single line\nURL: {{ $json.chatInput }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        384,
+        16
+      ],
+      "id": "cd1a2f6a-b58b-4eda-9e25-167e8dc82c0a",
+      "name": "Downloader AGENT"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        160,
+        272
+      ],
+      "id": "858b6723-c01e-4661-9d63-72e584db713e",
+      "name": "Gemma4",
+      "credentials": {
+        "ollamaApi": {
+          "id": "jpliRBF6Kc5jKgbm",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a data cleaning agent. Your task is to handle missing values in a dataset.\n\nUse EXEC tool to access to python and server\n\nINPUT: path to a dataset file (CSV)\n\nINSTRUCTIONS:\n\n1. Use bash tool to load the dataset:\n   import pandas as pd\n   df = pd.read_csv(\"<input_path>\")\n   print(df.info())\n   print(df.isnull().sum())\n   print(df.head())\n\n2. Analyze each column with missing values and make a weighted decision:\n   - If a missing value for a row can be imputed using the information from other columns, begin with doing so\n   - If missing 5–30% — fill with median/mode OR use forward fill if time-series\n   - If missing > 30% — drop the column entirely\n   - If the entire row is empty — drop the row\n   - If a value is missing in a column which can be considered critical for future analysis, drop the whole row\n   - For categorical columns with high cardinality — fill with \"Unknown\"\n   - For ID/key columns with missing — drop those rows\n   - If a column is not informative (like 'Unnamed: 0') — drop it\n   - Define Target column, delete all rows with missing Target values\n\n3. Use bash tool to apply cleaning and SAVE using pandas.to_csv:\n   - Document every decision made per column in a summary dict\n   - MANDATORY: save with pandas.to_csv:\n     df.to_csv(\"/app/data/cleaned_dataset.csv\", index=False)\n   - Verify file was saved:\n     import os\n     assert os.path.exists(\"/app/data/cleaned_dataset.csv\"), \"File not saved!\"\n     print(f\"Saved: /app/data/cleaned_dataset.csv, size: {os.path.getsize('/app/data/cleaned_dataset.csv')} bytes\")\n\n4. Use bash tool to verify:\n   df_check = pd.read_csv(\"/app/data/cleaned_dataset.csv\")\n   print(df_check.isnull().sum())\n   print(df_check.shape)\n\n5. Return as final answer:\n   - Output filename: cleaned_dataset.csv\n   - Full path: /app/data/cleaned_dataset.csv\n   - Summary of decisions per column (what was filled / dropped and why)\n\n6. Memory:\n   - Add rows where data was imputed and imputation method\n\nTools allowed: bash only\n\nInput: {{ $json.output }}\nOutput: filename of the cleaned dataset + decisions summary. Dataset MUST BE saved in /app/data\n\nIMPORTANT RULES:\n- After each bash tool call — wait for the result before proceeding\n- If tool returns no output — call bash tool again with print(os.listdir(\"/app/data\"))\n- After saving file — immediately return final answer, do not wait\n- Do not stop mid-way — always complete all 5 steps and return JSON\n\nAfter df.to_csv() is called and file is verified — STOP and return final JSON immediately:\n{\n  \"dataset_path\": \"/app/data/cleaned_dataset.csv\"\n}\nDo not run any more code after this.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1520,
+        16
+      ],
+      "id": "ca1a9fb4-7ec5-4be1-99ad-13f18d10b0f8",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        240
+      ],
+      "id": "f9fa28ac-44a5-4cd5-8dd7-06127de6d40e",
+      "name": "qwen3-coder",
+      "credentials": {
+        "ollamaApi": {
+          "id": "jpliRBF6Kc5jKgbm",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to use server environment, analyze datasets, save datasets locally\n\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        1632,
+        224
+      ],
+      "id": "53df6d26-9525-455d-865f-b81c34387424",
+      "name": "@tool EXEC1"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        336,
+        272
+      ],
+      "id": "4aa47bdb-1f7a-458b-92fc-cc562a5b394b",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1488,
+        240
+      ],
+      "id": "dad6a21e-d52b-4cd9-867f-b1dde5dc2788",
+      "name": "Simple Memory1"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Downloads a dataset file from a direct URL and saves it into /app/data inside the container. \nUseful for loading Kaggle datasets, zip archives, CSV files, and other downloadable datasets before processing them with Python or AI agents.\n\nThis tool should be used when the task requires:\n- downloading a dataset from a provided link\n- saving external files for further analysis\n- preparing data for ML pipelines\n- loading Kaggle dataset archives into the working environment\n\nInput:\n{\n  \"url\": \"string, required — direct download link to the dataset\",\n  \"filename\": \"string, optional — custom filename to save as inside /app/data\"\n}\n\nExample:\n{\n  \"url\": \"https://www.kaggle.com/api/v1/datasets/download/asifxzaman/global-ai-vs-human-content-dataset-2026\",\n  \"filename\": \"global-ai-vs-human-content-dataset-2026.zip\"\n}",
+        "method": "POST",
+        "url": "http://fastapi:8000/data/download",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', ``, 'string') }}"
+            },
+            {
+              "name": "filename",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters1_Value', ``, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        464,
+        336
+      ],
+      "id": "2f47cb2f-aba3-464b-9258-d246985a8180",
+      "name": "Download dataset"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fastapi:8000/merge",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "dataset2_path",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters1_Value', ``, 'string') }}"
+            },
+            {
+              "name": "dataset1",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters1_Value', ``, 'string') }}"
+            },
+            {
+              "name": "merge_field",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters2_Value', ``, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        1152,
+        208
+      ],
+      "id": "32427b33-63df-4180-ad3b-a26a9ce98dcb",
+      "name": "@tool merge"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1024,
+        352
+      ],
+      "id": "f435c473-1496-4497-8a26-0329a8c1537b",
+      "name": "Simple Memory2"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        912,
+        208
+      ],
+      "id": "3b631cd6-8360-421d-9c02-55fda7d313d8",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "jpliRBF6Kc5jKgbm",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a dataset merging agent. Your task is to merge multiple datasets by calling the /merge API endpoint.\nUse EXEC tool to access Python and server.\n\nINPUT: {{ $json.output }}\n\nINSTRUCTIONS:\n\n1. Use EXEC tool to parse input and load datasets:\n   import pandas as pd\n   import json\n   import re\n   import os\n\n   raw = \"\"\"{{ $json.output }}\"\"\"\n\n   # Strip markdown fences if present\n   raw = re.sub(r\"```json|```\", \"\", raw).strip()\n\n   # Parse JSON\n   try:\n       parsed = json.loads(raw)\n       path_string = parsed[\"dataset_path\"]\n   except Exception:\n       # Fallback: extract all /app/data/*.csv paths from raw string\n       path_string = \" \".join(re.findall(r\"/app/data/[\\w\\-.]+\\.csv\", raw))\n\n   # Split into list\n   paths = [p.strip() for p in path_string.split(\",\") if p.strip().endswith(\".csv\")]\n   print(f\"Parsed paths: {paths}\")\n\n   # Verify files exist\n   for p in paths:\n       assert os.path.exists(p), f\"File not found: {p}\"\n       print(f\"OK: {p} ({os.path.getsize(p)} bytes)\")\n\n2. Use EXEC tool to inspect all datasets:\n   dataframes = {}\n   for path in paths:\n       df = pd.read_csv(path)\n       dataframes[path] = df\n       print(f\"\\n=== {os.path.basename(path)} ===\")\n       print(f\"Shape: {df.shape}\")\n       print(f\"Columns: {list(df.columns)}\")\n       print(df.head(2))\n\n3. Determine merge strategy:\n   - Find common columns across ALL dataframes\n   - Pick merge key by priority: 'id' > 'tool_id' > 'prompt_id' > any common column with high cardinality\n   - If merging MORE than 2 files — merge sequentially: df1+df2 → result+df3 → ...\n   - If NO common columns — use pd.concat(axis=0) to stack vertically\n\n   df_list = list(dataframes.values())\n   all_cols = [set(df.columns) for df in df_list]\n   common = set.intersection(*all_cols)\n   print(f\"Common columns: {common}\")\n\n   for col in common:\n       for path, df in dataframes.items():\n           print(f\"{col} in {os.path.basename(path)}: {df[col].nunique()} unique\")\n\n4. Use EXEC tool to call /merge endpoint sequentially:\n   import requests\n\n   merge_key = \"<chosen_column>\"\n   df_list = list(dataframes.values())\n   paths_list = list(dataframes.keys())\n\n   # Cast key column to str in all dataframes\n   for df in df_list:\n       df[merge_key] = df[merge_key].astype(str)\n\n   # Sequential merge if more than 2 files\n   df_current = df_list[0]\n   for i in range(1, len(df_list)):\n       payload = {\n           \"dataset1\": df_current.to_dict(orient=\"records\"),\n           \"dataset2\": df_list[i].to_dict(orient=\"records\"),\n           \"merge_field\": merge_key\n       }\n       response = requests.post(\"http://fastapi:8000/merge\", json=payload)\n       result = response.json()\n       print(f\"Merge step {i}: status={response.status_code}, rows={result.get('rows')}\")\n\n       if \"merged\" not in result:\n           print(f\"ERROR: {result.get('error')}\")\n           break\n\n       df_current = pd.DataFrame(result[\"merged\"])\n       print(f\"After step {i}: shape={df_current.shape}\")\n\n5. Use EXEC tool to save result:\n   output_path = \"/app/data/merged_dataset.csv\"\n   df_current.to_csv(output_path, index=False)\n\n   assert os.path.exists(output_path), \"File not saved!\"\n   print(f\"Saved: {output_path}, size: {os.path.getsize(output_path)} bytes\")\n   print(f\"Final shape: {df_current.shape}\")\n   print(df_current.head(3))\n\n6. Memory:\n   - Save merge_key, input paths, final shape, duplicates removed\n\nSTOP after save and return ONLY this JSON, no markdown, no backticks:\n{\"dataset_path\": \"/app/data/merged_dataset.csv\", \"rows\": <N>, \"merge_key\": \"<col>\"}\n\nTools allowed: EXEC only\n\nIMPORTANT RULES:\n- Step 1 is MANDATORY — never skip input parsing\n- If json.loads fails — always fallback to regex extraction of paths\n- Cast merge_key to str BEFORE sending to /merge\n- Sequential merge: always merge result of previous step with next file\n- Max 1 retry per merge step — if fails twice, concat vertically instead\n- After final JSON is returned — STOP completely, do not run more code",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        944,
+        16
+      ],
+      "id": "c622a34d-f08b-47ba-baea-37ee4bf73c17",
+      "name": "AI Agent merge"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC": {
+      "ai_tool": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool GET FILES": {
+      "ai_tool": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Downloader AGENT": {
+      "main": [
+        [
+          {
+            "node": "AI Agent merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemma4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qwen3-coder": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download dataset": {
+      "ai_tool": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool merge": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent merge",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory2": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent merge",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent merge",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent merge": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "f0ee68f7-4206-465c-b770-7fed3a9bf178",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7f1ffcfc898b97830bd747269b030a45050ec7f8acb087316a4977ea3bf8dc03"
+  },
+  "id": "9GcWzEoW6ji2kqdj",
+  "tags": []
+}
