@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import contextlib
 from functools import lru_cache
+from html import unescape
+from html.parser import HTMLParser
 import io
 import os
 from pathlib import Path
@@ -10,6 +12,8 @@ import subprocess
 import sys
 import threading
 import traceback
+from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+from urllib.request import Request, urlopen
 
 
 app = FastAPI()
@@ -31,6 +35,68 @@ class InstallPackageRequest(BaseModel):
 
 class EmbeddingsRequest(BaseModel):
     texts: list[str] = Field(min_length=1, max_length=1000)
+
+
+class DuckDuckGoSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=300)
+    max_results: int = Field(default=5, ge=1, le=10)
+
+
+class DuckDuckGoHTMLParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.results = []
+        self.current = None
+        self.current_field = None
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        class_name = attrs.get("class", "")
+        if tag == "a" and "result__a" in class_name:
+            self.finish_current()
+            self.current = {"title": "", "url": self.clean_url(attrs.get("href", "")), "snippet": ""}
+            self.current_field = "title"
+        elif self.current and tag in {"a", "div"} and "result__snippet" in class_name:
+            self.current_field = "snippet"
+
+    def handle_data(self, data):
+        if self.current and self.current_field:
+            self.current[self.current_field] += data
+
+    def handle_endtag(self, tag):
+        if not self.current:
+            return
+        if tag == "a" and self.current_field == "title":
+            self.current_field = None
+        elif tag in {"a", "div"} and self.current_field == "snippet":
+            self.current_field = None
+
+    def close(self):
+        self.finish_current()
+        super().close()
+
+    def finish_current(self):
+        if self.current and self.current.get("title") and self.current.get("url"):
+            self.results.append(
+                {
+                    "title": unescape(" ".join(self.current["title"].split())),
+                    "url": self.current["url"],
+                    "snippet": unescape(" ".join(self.current["snippet"].split())),
+                }
+            )
+        self.current = None
+        self.current_field = None
+
+    @staticmethod
+    def clean_url(url: str) -> str:
+        if not url:
+            return ""
+        parsed = urlparse(url)
+        if parsed.path.startswith("/l/"):
+            uddg = parse_qs(parsed.query).get("uddg", [""])[0]
+            if uddg:
+                return unquote(uddg)
+        return url
 
 
 def build_pip_install_command(package: str) -> tuple[str, list[str]]:
@@ -112,6 +178,23 @@ def get_embeddings(texts: list[str]):
     )
 
 
+def search_duckduckgo(query: str, max_results: int) -> list[dict]:
+    url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (compatible; gp3-ai-agent/1.0)",
+        },
+    )
+    with urlopen(request, timeout=20) as response:
+        html = response.read().decode("utf-8", errors="replace")
+
+    parser = DuckDuckGoHTMLParser()
+    parser.feed(html)
+    parser.close()
+    return parser.results[:max_results]
+
+
 @app.post("/execute")
 async def execute(req: ExecuteRequest):
     stdout_capture = io.StringIO()
@@ -190,6 +273,24 @@ async def create_embeddings(req: EmbeddingsRequest):
     except Exception:
         return {
             "success": False,
+            "error": traceback.format_exc(),
+        }
+
+
+@app.post("/search/duckduckgo")
+async def duckduckgo_search(req: DuckDuckGoSearchRequest):
+    try:
+        results = search_duckduckgo(req.query, req.max_results)
+        return {
+            "success": True,
+            "query": req.query,
+            "count": len(results),
+            "results": results,
+        }
+    except Exception:
+        return {
+            "success": False,
+            "query": req.query,
             "error": traceback.format_exc(),
         }
 
