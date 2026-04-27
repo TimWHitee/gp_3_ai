@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import contextlib
 from functools import lru_cache
@@ -8,6 +8,7 @@ import io
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -20,6 +21,7 @@ from typing import Any
 app = FastAPI()
 
 REQUIREMENTS_PATH = Path(os.getenv("REQUIREMENTS_PATH", "/app/requirements.txt"))
+DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
 PACKAGE_PATTERN = re.compile(
     r"^[A-Za-z0-9_.-]+(\[[A-Za-z0-9_,.-]+\])?([<>=!~]=?[A-Za-z0-9_.*+!<>=~,-]+)?$"
 )
@@ -200,6 +202,30 @@ def search_duckduckgo(query: str, max_results: int) -> list[dict]:
     return parser.results[:max_results]
 
 
+def clear_data() -> list[dict]:
+    data_dir = DATA_DIR.resolve()
+    if not data_dir.exists():
+        return []
+    if not data_dir.is_dir():
+        raise HTTPException(status_code=500, detail=f"DATA_DIR is not a directory: {data_dir}")
+
+    deleted = []
+    for child in data_dir.iterdir():
+        item = {
+            "name": child.name,
+            "path": str(child),
+            "type": "directory" if child.is_dir() and not child.is_symlink() else "file",
+        }
+        if child.is_symlink() or child.is_file():
+            child.unlink()
+        elif child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink(missing_ok=True)
+        deleted.append(item)
+    return deleted
+
+
 @app.post("/execute")
 async def execute(req: ExecuteRequest):
     stdout_capture = io.StringIO()
@@ -311,6 +337,24 @@ async def duckduckgo_search(req: DuckDuckGoSearchRequest):
         return {
             "success": False,
             "query": req.query,
+            "error": traceback.format_exc(),
+        }
+
+
+@app.post("/data/clear")
+async def clear_data_endpoint():
+    try:
+        deleted = clear_data()
+        return {
+            "success": True,
+            "data_dir": str(DATA_DIR),
+            "deleted_count": len(deleted),
+            "deleted": deleted,
+        }
+    except Exception:
+        return {
+            "success": False,
+            "data_dir": str(DATA_DIR),
             "error": traceback.format_exc(),
         }
 
