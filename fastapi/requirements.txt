@@ -7,3 +7,4 @@ matplotlib
 seaborn
 catboost
 pydantic
+sentence-transformers

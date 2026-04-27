@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import contextlib
+from functools import lru_cache
 import io
 import os
 from pathlib import Path
@@ -28,6 +29,10 @@ class ExecuteRequest(BaseModel):
 
 class InstallPackagesRequest(BaseModel):
     packages: list[str] = Field(min_length=1, max_length=20)
+
+
+class EmbeddingsRequest(BaseModel):
+    texts: list[str] = Field(min_length=1, max_length=1000)
 
 
 def build_pip_install_command(packages: list[str]) -> tuple[list[str], list[str]]:
@@ -94,6 +99,24 @@ def run_command(args: list[str], timeout: int) -> dict:
     }
 
 
+@lru_cache(maxsize=1)
+def get_embedding_model():
+    from sentence_transformers import SentenceTransformer
+
+    return SentenceTransformer("intfloat/multilingual-e5-small")
+
+
+def get_embeddings(texts: list[str]):
+    model = get_embedding_model()
+    prefixed_texts = ["passage: " + str(text) for text in texts]
+    return model.encode(
+        prefixed_texts,
+        normalize_embeddings=True,
+        batch_size=32,
+        show_progress_bar=False,
+    )
+
+
 @app.post("/execute")
 async def execute(req: ExecuteRequest):
     stdout_capture = io.StringIO()
@@ -158,6 +181,24 @@ async def packages_status():
     }
 
 
+@app.post("/embeddings/create")
+async def create_embeddings(req: EmbeddingsRequest):
+    try:
+        embeddings = get_embeddings(req.texts)
+        return {
+            "success": True,
+            "model_name": "intfloat/multilingual-e5-small",
+            "count": len(req.texts),
+            "dim": int(embeddings.shape[1]),
+            "embeddings": embeddings.tolist(),
+        }
+    except Exception:
+        return {
+            "success": False,
+            "error": traceback.format_exc(),
+        }
+
+
 @app.get("/check-imports")
 async def check_imports():
     results = {}
@@ -168,6 +209,7 @@ async def check_imports():
         ("matplotlib", "matplotlib"),
         ("seaborn", "seaborn"),
         ("catboost", "catboost"),
+        ("sentence-transformers", "sentence_transformers"),
     ]
     for name, module in libs:
         try:
