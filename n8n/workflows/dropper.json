@@ -1,0 +1,328 @@
+{
+  "name": "My workflow 3",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -624,
+        -64
+      ],
+      "id": "43ea6614-d423-491f-965e-29c30d57a4f9",
+      "name": "When chat message received",
+      "webhookId": "3bb3e430-d848-41b7-9c0b-799876e5a169"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        272,
+        192
+      ],
+      "id": "ff2b8af3-d51e-44db-9814-b865354de646",
+      "name": "@tool EXEC"
+    },
+    {
+      "parameters": {
+        "url": "http://fastapi:8000/data/files",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        128,
+        192
+      ],
+      "id": "7a864732-17e1-4dcb-9aef-58bd82521b12",
+      "name": "@tool GET FILES"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a file download agent. Your task is to download a dataset from the provided URL.\n\nYou have access to these tools:\n- DOWNLOAD TOOL (POST /data/download) — downloads a file by URL into /app/data\n- EXEC tool — executes Python code\n\nInstructions:\n\n1. Use DOWNLOAD TOOL to download the file:\n   POST /data/download\n   {\n     \"url\": \"<URL from input>\",\n     \"filename\": \"dataset.zip\"\n   }\n   Check that response has \"success\": true\n\n2. If the downloaded file is a zip archive — extract it using EXEC tool:\n   import os, zipfile\n   output = \"/app/data/dataset.zip\"\n   if zipfile.is_zipfile(output):\n       with zipfile.ZipFile(output, \"r\") as z:\n           z.extractall(\"/app/data\")\n       os.remove(output)\n   print(os.listdir(\"/app/data\"))\n\n3. Verify CSV files exist:\n   files = [f for f in os.listdir(\"/app/data\") if f.endswith(\".csv\")]\n   assert len(files) > 0, \"No CSV found — retry!\"\n\n4. Return ONLY this JSON (no other text):\n{\n  \"dataset_path\": \"/app/data/file1.csv, /app/data/file2.csv\"\n}\n\nURL: {{ $json.chatInput }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -160,
+        -64
+      ],
+      "id": "5a7faac5-5f8c-46c6-aa35-79f22316dc0e",
+      "name": "Downloader AGENT"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -384,
+        192
+      ],
+      "id": "d8fc374a-3af2-46bc-8c4d-4b3123e512f0",
+      "name": "Gemma4",
+      "credentials": {
+        "ollamaApi": {
+          "id": "K3ZYQX7oQlYxbRn2",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a data cleaning agent. Your task is to handle missing values in a dataset.\n\nUse EXEC tool to access to python and server\n\nINPUT: path to a dataset file (CSV)\n\nINSTRUCTIONS:\n\n1. Use bash tool to load the dataset:\n   import pandas as pd\n   df = pd.read_csv(\"<input_path>\")\n   print(df.info())\n   print(df.isnull().sum())\n   print(df.head())\n\n2. Analyze each column with missing values and make a weighted decision:\n   - If a missing value for a row can be imputed using the information from other columns, begin with doing so\n   - If missing 5–30% — fill with median/mode OR use forward fill if time-series\n   - If missing > 30% — drop the column entirely\n   - If the entire row is empty — drop the row\n   - If a value is missing in a column which can be considered critical for future analysis, drop the whole row\n   - For categorical columns with high cardinality — fill with \"Unknown\"\n   - For ID/key columns with missing — drop those rows\n   - If a column is not informative (like 'Unnamed: 0') — drop it\n   - Define Target column, delete all rows with missing Target values\n\n3. Use bash tool to apply cleaning and SAVE using pandas.to_csv:\n   - Document every decision made per column in a summary dict\n   - MANDATORY: save with pandas.to_csv:\n     df.to_csv(\"/app/data/cleaned_dataset.csv\", index=False)\n   - Verify file was saved:\n     import os\n     assert os.path.exists(\"/app/data/cleaned_dataset.csv\"), \"File not saved!\"\n     print(f\"Saved: /app/data/cleaned_dataset.csv, size: {os.path.getsize('/app/data/cleaned_dataset.csv')} bytes\")\n\n4. Use bash tool to verify:\n   df_check = pd.read_csv(\"/app/data/cleaned_dataset.csv\")\n   print(df_check.isnull().sum())\n   print(df_check.shape)\n\n5. Return as final answer:\n   - Output filename: cleaned_dataset.csv\n   - Full path: /app/data/cleaned_dataset.csv\n   - Summary of decisions per column (what was filled / dropped and why)\n\n6. Memory:\n   - Add rows where data was imputed and imputation method\n\nTools allowed: bash only\n\nInput: {{ $json.output }}\nOutput: filename of the cleaned dataset + decisions summary. Dataset MUST BE saved in /app/data\n\nIMPORTANT RULES:\n- After each bash tool call — wait for the result before proceeding\n- If tool returns no output — call bash tool again with print(os.listdir(\"/app/data\"))\n- After saving file — immediately return final answer, do not wait\n- Do not stop mid-way — always complete all 5 steps and return JSON\n\nAfter df.to_csv() is called and file is verified — STOP and return final JSON immediately:\n{\n  \"dataset_path\": \"/app/data/cleaned_dataset.csv\"\n}\nDo not run any more code after this.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        496,
+        -64
+      ],
+      "id": "9e227414-d56d-46ce-8634-48c207a3c955",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        480,
+        160
+      ],
+      "id": "3e7190f2-85d6-4efe-8b53-2efe10be71d3",
+      "name": "qwen3-coder",
+      "credentials": {
+        "ollamaApi": {
+          "id": "K3ZYQX7oQlYxbRn2",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to use server environment, analyze datasets, save datasets locally\n\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        752,
+        160
+      ],
+      "id": "41640115-ad4a-419d-a0c9-b713dd5e6c81",
+      "name": "@tool EXEC1"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -208,
+        192
+      ],
+      "id": "797962e3-41c7-4e8e-a2ee-c6f4b5a46183",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        608,
+        160
+      ],
+      "id": "6f72432f-096d-42f5-9b55-df06ba053939",
+      "name": "Simple Memory1"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Downloads a dataset file from a direct URL and saves it into /app/data inside the container. \nUseful for loading Kaggle datasets, zip archives, CSV files, and other downloadable datasets before processing them with Python or AI agents.\n\nThis tool should be used when the task requires:\n- downloading a dataset from a provided link\n- saving external files for further analysis\n- preparing data for ML pipelines\n- loading Kaggle dataset archives into the working environment\n\nInput:\n{\n  \"url\": \"string, required — direct download link to the dataset\",\n  \"filename\": \"string, optional — custom filename to save as inside /app/data\"\n}\n\nExample:\n{\n  \"url\": \"https://www.kaggle.com/api/v1/datasets/download/asifxzaman/global-ai-vs-human-content-dataset-2026\",\n  \"filename\": \"global-ai-vs-human-content-dataset-2026.zip\"\n}",
+        "method": "POST",
+        "url": "http://fastapi:8000/data/download",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', ``, 'string') }}"
+            },
+            {
+              "name": "filename",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters1_Value', ``, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -32,
+        192
+      ],
+      "id": "e61347c9-d2a1-4872-a47f-a7657d47a835",
+      "name": "Download dataset"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC": {
+      "ai_tool": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool GET FILES": {
+      "ai_tool": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Downloader AGENT": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemma4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "qwen3-coder": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download dataset": {
+      "ai_tool": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "ddb8f8b7-0731-4842-b487-48fbfa791109",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "448ac833fd3e70a1638f7923f54c0cefb8016acb285d5c84b2d2100f6980c11e"
+  },
+  "id": "ILgV6nq94WxVeacz",
+  "tags": []
+}

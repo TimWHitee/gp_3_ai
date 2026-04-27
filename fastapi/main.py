@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+﻿from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import contextlib
 from functools import lru_cache
@@ -328,3 +328,58 @@ async def list_files():
             }
         )
     return {"files": files}
+
+class DownloadDatasetRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=1000)
+    filename: str | None = Field(default=None, max_length=255)
+
+
+@app.post("/data/download")
+async def download_dataset(req: DownloadDatasetRequest):
+    data_dir = Path("/app/data")
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    parsed_url = urlparse(req.url)
+    default_filename = Path(parsed_url.path).name or "dataset.zip"
+    filename = req.filename or default_filename
+
+    if "/" in filename or "\\" in filename:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid filename",
+        )
+
+    output_path = data_dir / filename
+
+    command = [
+        "curl",
+        "-L",
+        "-o",
+        str(output_path),
+        req.url,
+    ]
+
+    result = run_command(command, timeout=1800)
+
+    if result["returncode"] != 0:
+        return {
+            "success": False,
+            "url": req.url,
+            "path": str(output_path),
+            "download": result,
+        }
+
+    if not output_path.exists():
+        return {
+            "success": False,
+            "url": req.url,
+            "error": "File was not created after download",
+        }
+
+    return {
+        "success": True,
+        "url": req.url,
+        "path": str(output_path),
+        "size_kb": round(output_path.stat().st_size / 1024, 1),
+        "download": result,
+    }
