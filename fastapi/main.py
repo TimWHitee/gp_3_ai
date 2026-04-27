@@ -383,3 +383,102 @@ async def download_dataset(req: DownloadDatasetRequest):
         "size_kb": round(output_path.stat().st_size / 1024, 1),
         "download": result,
     }
+
+
+class CleanDatasetRequest(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    target_column: str | None = Field(default=None, max_length=100)
+
+
+@app.post("/data/clean")
+async def clean_dataset(req: CleanDatasetRequest):
+    import pandas as pd
+    import numpy as np
+
+    data_dir = Path("/app/data")
+    input_path = data_dir / req.filename
+
+    if not input_path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {req.filename}")
+
+    if "/" in req.filename or "\\" in req.filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    try:
+        df = pd.read_csv(input_path)
+        shape_before = df.shape
+        decisions = {}
+
+        # Drop unnamed/index columns
+        for col in list(df.columns):
+            if col in ['Unnamed: 0'] or 'unnamed' in col.lower():
+                df = df.drop(columns=[col])
+                decisions[col] = "DROPPED — not informative index column"
+
+        # Drop ID columns
+        for col in list(df.columns):
+            if col.lower() in ['id', 'row_id', 'index']:
+                df = df.drop(columns=[col])
+                decisions[col] = "DROPPED — ID column"
+
+        # Handle missing values per column
+        for col in list(df.columns):
+            missing_pct = df[col].isnull().mean() * 100
+            if missing_pct == 0:
+                continue
+            elif missing_pct > 30:
+                df = df.drop(columns=[col])
+                decisions[col] = f"DROPPED — {missing_pct:.1f}% missing (>30% threshold)"
+            elif pd.api.types.is_bool_dtype(df[col]):
+                df[col] = df[col].fillna(df[col].mode()[0])
+                decisions[col] = f"FILLED with mode — {missing_pct:.1f}% missing (bool)"
+            elif pd.api.types.is_numeric_dtype(df[col]):
+                df[col] = df[col].fillna(df[col].median())
+                decisions[col] = f"FILLED with median — {missing_pct:.1f}% missing (numeric)"
+            elif pd.api.types.is_object_dtype(df[col]):
+                df[col] = df[col].fillna("Unknown")
+                decisions[col] = f"FILLED with 'Unknown' — {missing_pct:.1f}% missing (text)"
+            else:
+                df[col] = df[col].fillna("Unknown")
+                decisions[col] = f"FILLED with 'Unknown' — {missing_pct:.1f}% missing (other)"
+
+        # Drop entirely empty rows
+        empty_before = len(df)
+        df = df.dropna(how='all')
+        dropped_empty = empty_before - len(df)
+        decisions['_empty_rows'] = f"DROPPED {dropped_empty} fully empty rows"
+
+        # Drop rows with missing target
+        target_col = req.target_column or ('label' if 'label' in df.columns else None)
+        if target_col and target_col in df.columns:
+            before = len(df)
+            df = df.dropna(subset=[target_col])
+            decisions[f'_target_{target_col}'] = f"DROPPED {before - len(df)} rows with missing target"
+
+        shape_after = df.shape
+
+        # Save cleaned dataset
+        output_filename = f"cleaned_{req.filename}"
+        output_path = data_dir / output_filename
+        df.to_csv(output_path, index=False)
+
+        if not output_path.exists():
+            raise Exception("File was not created after cleaning")
+
+        return {
+            "success": True,
+            "input_filename": req.filename,
+            "output_filename": output_filename,
+            "output_path": str(output_path),
+            "size_kb": round(output_path.stat().st_size / 1024, 1),
+            "shape_before": f"{shape_before[0]}x{shape_before[1]}",
+            "shape_after": f"{shape_after[0]}x{shape_after[1]}",
+            "decisions": decisions,
+        }
+
+    except Exception:
+        return {
+            "success": False,
+            "input_filename": req.filename,
+            "error": traceback.format_exc(),
+        }

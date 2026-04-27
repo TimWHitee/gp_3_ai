@@ -5,5 +5,5 @@ __pycache__/
 n8n_data/
 models/*.cbm
 models/*.pkl
-data/*.csv
+data/
 a.py
