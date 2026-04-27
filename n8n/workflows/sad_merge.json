@@ -1,0 +1,1050 @@
+{
+  "name": "sad_merge",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -4384,
+        160
+      ],
+      "id": "193e3f7f-8216-43db-bf42-b187f9edfc43",
+      "name": "When chat message received",
+      "webhookId": "3bb3e430-d848-41b7-9c0b-799876e5a169"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -3520,
+        416
+      ],
+      "id": "7d98ae6f-5628-46c7-98a2-ff254783fe93",
+      "name": "@tool EXEC"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Returns list of datasets",
+        "url": "http://fastapi:8000/data/files",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -3696,
+        416
+      ],
+      "id": "7e6b93d4-8f7d-4c1f-adb0-9516cc774db3",
+      "name": "@tool GET FILES"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a file download agent. Your task is to download a dataset from the provided URL.\n\nYou have access to these tools:\n- DOWNLOAD TOOL (POST /data/download) — downloads a file by URL into /app/data\n- EXEC tool — executes Python code\n\nInstructions:\n\n1. Use DOWNLOAD TOOL to download the file:\n   POST /data/download\n   {\n     \"url\": \"<URL from input>\",\n     \"filename\": \"dataset.zip\"\n   }\n   Check that response has \"success\": true\n\n2. If the downloaded file is a zip archive — extract it using EXEC tool:\n   import os, zipfile\n   output = \"/app/data/dataset.zip\"\n   if zipfile.is_zipfile(output):\n       with zipfile.ZipFile(output, \"r\") as z:\n           z.extractall(\"/app/data\")\n       os.remove(output)\n   print(os.listdir(\"/app/data\"))\n\n3. Verify CSV files exist:\n   files = [f for f in os.listdir(\"/app/data\") if f.endswith(\".csv\")]\n   assert len(files) > 0, \"No CSV found — retry!\"\n\n4. Return ONLY this JSON (no other text) USING TOOL \"GET FILES\":\n{\n  \"dataset_path\": \"/app/data/file1.csv, /app/data/file2.csv\"\n}\n\nURL: {{ $json.chatInput }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -3920,
+        160
+      ],
+      "id": "daa9f378-da88-4a06-aaf6-00a196707ba0",
+      "name": "Downloader AGENT"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -4224,
+        416
+      ],
+      "id": "ab180811-8419-4b6e-90cc-ea244d08d49b",
+      "name": "Gemma4",
+      "credentials": {
+        "ollamaApi": {
+          "id": "jpliRBF6Kc5jKgbm",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to use server environment, analyze datasets, save datasets locally\n\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -2512,
+        384
+      ],
+      "id": "6699bd0a-1af3-4d2a-8039-41b80316ad7d",
+      "name": "@tool EXEC1"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -4032,
+        416
+      ],
+      "id": "d15c677a-2be2-47e6-b4a0-7d8692e9ebf5",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -2208,
+        384
+      ],
+      "id": "213e5158-12f9-4cb0-b017-4837c79e7d12",
+      "name": "Simple Memory1"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Downloads a dataset file from a direct URL and saves it into /app/data inside the container. \nUseful for loading Kaggle datasets, zip archives, CSV files, and other downloadable datasets before processing them with Python or AI agents.\n\nThis tool should be used when the task requires:\n- downloading a dataset from a provided link\n- saving external files for further analysis\n- preparing data for ML pipelines\n- loading Kaggle dataset archives into the working environment\n\nInput:\n{\n  \"url\": \"string, required — direct download link to the dataset\",\n  \"filename\": \"string, optional — custom filename to save as inside /app/data\"\n}\n\nExample:\n{\n  \"url\": \"https://www.kaggle.com/api/v1/datasets/download/asifxzaman/global-ai-vs-human-content-dataset-2026\",\n  \"filename\": \"global-ai-vs-human-content-dataset-2026.zip\"\n}",
+        "method": "POST",
+        "url": "http://fastapi:8000/data/download",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', ``, 'string') }}"
+            },
+            {
+              "name": "filename",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters1_Value', ``, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -3872,
+        416
+      ],
+      "id": "6897fc62-0d6f-4927-b7ab-3cae96a28b52",
+      "name": "Download dataset"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=\nYou are a data cleaning agent. Your task is to handle missing values in a dataset.\nUse EXEC tool to access Python and server. ALL DATA OPERATIONS MUST BE DONE VIA EXEC TOOL ONLY.\n\nINPUT: path to a dataset file (CSV)\n\nSTRICT RULES:\n- NEVER write, invent, or fabricate any data values yourself\n- NEVER hardcode any values — always compute them from the data (median, mode, etc.)\n- NEVER output data rows or cell values in your text\n- ALL operations (fill, drop, save) must happen inside EXEC tool code only\n- Do NOT stop mid-way — always complete all steps and return final JSON\n- ALWAYS check column dtype before filling — never apply median to non-numeric columns\n- NEVER DROP COLUMNS — the only exception is ID columns and Unnamed index columns\n- NEVER drop columns due to high missing percentage — fill them instead\n- ALL missing text/categorical values MUST be filled with \"Unknown\"\n- ALL missing numeric values MUST be filled with median\n- ALL missing bool values MUST be filled with mode\n\nINSTRUCTIONS:\n\n1. Use EXEC tool to load and inspect:\n   import pandas as pd\n   import os\n   df = pd.read_csv(\"<input_path>\")\n   print(df.info())\n   print(df.isnull().sum())\n   print(df.dtypes)\n\n2. Use EXEC tool to clean — use this exact pattern:\n   decisions = {}\n\n   # STEP 1: Drop only ID and Unnamed columns — nothing else\n   id_keywords = ['unnamed', 'row_id', 'index']\n   id_exact = ['id', 'Unnamed: 0']\n   cols_to_drop = [\n       col for col in df.columns\n       if col in id_exact\n       or col.lower() in id_keywords\n       or col.strip().lower() == 'id'\n   ]\n   for col in cols_to_drop:\n       df = df.drop(columns=[col])\n       decisions[col] = \"DROPPED — ID or index column\"\n\n   # STEP 2: Fill missing values — DO NOT drop any column\n   for col in df.columns:\n       missing_pct = df[col].isnull().mean() * 100\n       if missing_pct == 0:\n           continue\n       elif pd.api.types.is_bool_dtype(df[col]):\n           df[col] = df[col].fillna(df[col].mode()[0])\n           decisions[col] = f\"FILLED with mode — {missing_pct:.1f}% missing (bool)\"\n       elif pd.api.types.is_numeric_dtype(df[col]):\n           df[col] = df[col].fillna(df[col].median())\n           decisions[col] = f\"FILLED with median — {missing_pct:.1f}% missing (numeric)\"\n       elif pd.api.types.is_object_dtype(df[col]):\n           df[col] = df[col].fillna(\"Unknown\")\n           decisions[col] = f\"FILLED with 'Unknown' — {missing_pct:.1f}% missing (text)\"\n       else:\n           df[col] = df[col].fillna(\"Unknown\")\n           decisions[col] = f\"FILLED with 'Unknown' — {missing_pct:.1f}% missing (other)\"\n\n   # STEP 3: Drop entirely empty rows only\n   empty_before = len(df)\n   df = df.dropna(how='all')\n   decisions['_empty_rows'] = f\"DROPPED {empty_before - len(df)} fully empty rows\"\n\n   # STEP 4: Drop rows with missing target\n   if 'label' in df.columns:\n       before = len(df)\n       df = df.dropna(subset=['label'])\n       decisions['label_rows'] = f\"DROPPED {before - len(df)} rows with missing target\"\n\n   print(df.isnull().sum())\n   print(df.shape)\n   print(\"DECISIONS:\", decisions)\n\n3. Use EXEC tool to save:\n   df.to_csv(\"/app/data/cleaned_dataset.csv\", index=False)\n   assert os.path.exists(\"/app/data/cleaned_dataset.csv\"), \"File not saved!\"\n   print(f\"Saved: /app/data/cleaned_dataset.csv, size: {os.path.getsize('/app/data/cleaned_dataset.csv')} bytes\")\n\n4. Use EXEC tool to verify:\n   df_check = pd.read_csv(\"/app/data/cleaned_dataset.csv\")\n   print(df_check.isnull().sum())\n   print(df_check.shape)\n\n5. STOP and return final JSON immediately + short summary:\n{\n  \"dataset_path\": \"/app/data/cleaned_dataset.csv\",\n  \"shape_before\": \"<rows>x<cols>\",\n  \"shape_after\": \"<rows>x<cols>\",\n  \"decisions\": {\n    \"<column>\": \"<action and reason>\"\n  }\n}\n\nThen write 3-5 sentences summary: what was found, what was dropped, what was filled and how.\n\nInput: {{ $json.output }}\n\nAFTER SAVING FILE — DO NOT RUN ANY MORE CODE. RETURN JSON AND SUMMARY IMMEDIATELY.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -2800,
+        160
+      ],
+      "id": "375c2218-c62b-4220-935b-222bc9df4ef7",
+      "name": "Cleaning Agent"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -2384,
+        352
+      ],
+      "id": "f48154cf-1162-4064-bf5c-c1b98358e4d8",
+      "name": "Ollama Chat Model"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -2848,
+        384
+      ],
+      "id": "5f60d0fd-f119-4c68-95af-69199f8a2c21",
+      "name": "Gemma"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -2704,
+        384
+      ],
+      "id": "e0da0537-0f9c-49c3-a07f-01f79a0be78f",
+      "name": "Simple Memory2"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to use server environment, analyze datasets, save datasets locally\n\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -2000,
+        384
+      ],
+      "id": "5f254216-3abe-4c14-9433-a4b96336a99f",
+      "name": "@tool EXEC2"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a data analysis agent.\n\nPerform fast univariate EDA on a cleaned CSV dataset.\n\nUse EXEC tool only for:\n- loading data\n- calculations\n- visualizations\n- saving files\n\nINPUT:\n{{ $json.output }}\n\nRULES:\n- Never fabricate results\n- Save all plots as PNG in /app/data/plots/\n- Do not use LabelEncoder for full text columns\n- Do not treat target column (label/target/class) as a normal feature\n- Return only final JSON after analysis\n\nTASKS:\n\n1. Load dataset\n- read CSV\n- get shape, columns, dtypes\n- check missing values\n\n2. Detect columns:\n- numeric\n- categorical (low-cardinality)\n- text (long/high-cardinality text)\n- target column if exists\n\n3. Numeric analysis:\n- basic statistics\n- outlier detection (IQR). If outliers were detected in a column, remember the final objective of your work, then decide if the outliers are useful for your research, or obstruct it. If you concider outliers redundant, delete the rows where outliers are detected in this column. Do this analisys for every numeric column.\n- scale all numeric columns using Standard Scaler.\n- histogram + boxplot + violin plot\n\n4. Categorical analysis:\n- value counts\n- top categories\n- pie chart or bar chart\n- if values in a column have a natural order (like 'small', 'normal', 'large'), use Ordinal Encoding to transform the column. In all other cases, use One Hot Encoding to transform the column. If a column has more than 10 unique values (categories), arrange the values in descending order of occurrence, leave 10 most common values as they are, and all least common values as \"Other\", then use One Hot Encoding. New column/columns must be added to the dataset, the initial column must be dropped.\n\n5. Text analysis:\n- average text length\n- text length histogram\n- Using GET EMBS, code the text features. New columns (embeddings) must be added to the dataset, the initial column must be dropped.\n\n6. Target analysis:\n- class balance\n- target distribution plot\n\n7. Save all plots\n\n8. Return final JSON with:\n- dataset shape\n- numeric columns\n- categorical columns\n- text columns\n- target column\n- outlier summary\n- categorical summary\n- text summary\n- target summary\n- saved plot files\n- warnings if leakage risk exists\n\nDO NOT WRITE like: \"Calling _tool_EXEC2 with input\", call tools instead\n\nSTOP after returning JSON\n",
+        "options": {
+          "maxIterations": 20,
+          "returnIntermediateSteps": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -2224,
+        160
+      ],
+      "id": "da8afaf7-5b2b-40c9-9ba9-cbc553ad9897",
+      "name": "Uni variate"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -1648,
+        512
+      ],
+      "id": "62f40801-580a-4b41-9965-7027543aae27",
+      "name": "Simple Memory3"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -1776,
+        368
+      ],
+      "id": "bc6271e7-9c40-4282-b83f-cd57d4eccd21",
+      "name": "Ollama Chat Model1"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to use python on server\n\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -1520,
+        368
+      ],
+      "id": "a1b5f920-b15c-4fd4-9b1f-263f7088a0a7",
+      "name": "@tool EXEC3"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a data analysis agent.\nDo bivariate analysis on a cleaned dataset using ONLY EXEC tool.\n\nInput CSV path:\n{{ $('Cleaning Agent').item.json.output }}\n\nRules\nAll code runs ONLY in EXEC\nDo NOT fabricate anything\nSave all plots to: /app/data/plots/bivariate/\nFinish fully and return final JSON + short insight text\nSteps\n1. Load data + setup\nimport pandas, numpy, matplotlib (Agg), seaborn, os\nimport PCA from sklearn.decomposition\nimport StandardScaler from sklearn.preprocessing\ncreate plots folder\nread CSV\nsplit numeric and categorical columns\nprint dataset shape and columns\n2. Correlations\ncompute Pearson + Spearman matrices\nprint both\ncreate and save 2 heatmaps:\npearson_heatmap.png\nspearman_heatmap.png\n3. Pairplot\nuse all numeric columns\nif target exists  and is categorical (or previously encoded categorical) — use as hue\nsave pairplot.png\n4. PCA visualization (2D)\n\nPerform PCA on numeric features:\n\nuse numeric columns only\ndrop rows with missing values in numeric features\nstandardize features using StandardScaler\nreduce dimensions to 2 using PCA\n\nCreate scatter plot:\n\nX axis → PCA component 1\nY axis → PCA component 2\n\nAdditionally encode up to 2 extra features:\n\ncolor — target column if exists\nsize — PCA component 3\n\nRequirements:\n\nlegend is REQUIRED\naxis labels must include explained variance ratio\ntitle: PCA Visualization\nsave as:\npca_visualization.png\n\nIf there are no categorical columns:\n\nuse default color grouping\nstill create PCA plot\n\nPrint explained variance ratio.\n\n5. Correlation report\n\nFor each numeric pair:\n\ncompute Pearson + Spearman\nclassify:\nextra strong  ≥ 0.9\nstrong ≥ 0.8\nmoderate ≥ 0.6\nweak < 0.6\nstore results\n6. Scatter plots\n\nFor pairs with |Pearson| ≥ 0.6\n\nsave scatter plot for each pair\n7. List saved files\n\nPrint all files from /app/data/plots/bivariate\n\nFinal output (NO MORE CODE AFTER THIS)\n\nReturn JSON:\n\nplots_dir\nplots list\nnumeric_columns\ncorrelation_report\nstrong_pairs\nmoderate_pairs\nweak_pairs\npca_explained_variance\npca_features_used\n\nThen write 5–7 sentences:\n\nstrongest and weakest relationships\nlinear vs non-linear patterns\npairplot insights\nPCA cluster structure\nmulticollinearity risks\nExecution rule\n\nStart immediately.\nNo explanations.\nNo planning.\nNo prefaces.\n\nCRITICAL BEHAVIOR RULES: - DO NOT describe what you are going to do - DO NOT write \"I will now...\", \"Let me...\", \"I'll start by...\", \"Next I will...\" - DO NOT announce steps before executing them - JUST EXECUTE — call EXEC tool immediately without any preamble - After all tools are done — return final JSON and description IMMEDIATELY",
+        "options": {
+          "maxIterations": 20,
+          "returnIntermediateSteps": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -1744,
+        160
+      ],
+      "id": "ea35b08a-27a2-4526-ac26-86eb5d951a5f",
+      "name": "Bi variate"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Сделай Feature Selection и Feature Extraction по инструкциям ниже:\n\nFeature extraction:\n\n1) используй информацию, полученную на предыдущих этапах: какие признаки есть в датасете, что они обозначают, как они были закодированы, каковы корреляции между ними. Подумай, какие их признаков выгодно использовать в комбинации, а какие нет\n2) предложи 5 новых признаков, которые можно создать из исходных признаков в датасете. Используй математические операции, комбинации из нескольких признаков. Следи, чтобы новые признаки имели смысл.\n3) выбери 2+ наилучших из 5 признаков. Признак является ценным если он информативен, может продемонстрировать большую полезность, чем исходные признаки, на основе которых он создан, в контексте поставленной задачи, и не имеет внутренних проблем (например не может давать некорректные значения из-за деления на 0). Добавь эти признаки в датсет и удали признаки, которые использовались для создания новых признаков.\n\nFeature selection:\n\n1) Найди корреляции между новыми признаками, созданными в рамках Feature extraction, и всеми исходными признаками. Используй эту информацию, и информацию, полученную на предыдущих этапах: какие признаки остались в датасете, что они обозначают, как они были закодированы, каковы корреляции между ними. \n2) Проанализируй, какие признаки могут создавать проблему мультиколлинеарности. Из этих признаков выбери те, которые следует удалить, и удали их\n3) Проверь, остались ли в датасете избыточные признаки, не являющиеся информативными и не несущие ценности в рамках решаемой задачи. Если есть, удали их.\n\nдатасет по пути:  {{ $('Cleaning Agent').item.json.output }}\n\nСохрани датасет в ту же папку, вызвав EXEC Tool с pd.to_csv()\nИспользую тул GET FILES проверь, что ты реально сохранил датасет по тому пути.\n\n\n\nв качестве ответа дай путь нового датасета и определи задачу машинного обучения, для которой он будет использоваться\n\nответ в формате \n\n{\n\"dataset_path\": path\n\"ML_task\": classification/regression/clusterization/\n\"Description\": описание фич инжениринга\n}\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -1264,
+        160
+      ],
+      "id": "d5900ce9-9f4b-4ddf-9b7d-d30c615b421b",
+      "name": "Feature Engineering"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -1328,
+        368
+      ],
+      "id": "a598d9b4-4256-438b-b4fc-c0a791b1cfcc",
+      "name": "Ollama Chat Model2"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -1184,
+        496
+      ],
+      "id": "faf24ba0-e5ef-4649-a7d3-a2c6f7ad9453",
+      "name": "Simple Memory4"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to use python on server\n\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -1040,
+        368
+      ],
+      "id": "23ff0b32-6698-410e-8379-35cc5e64236d",
+      "name": "@tool EXEC4"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Returns list of datasets",
+        "url": "http://fastapi:8000/data/files",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -864,
+        496
+      ],
+      "id": "497c3f06-e2b3-4fea-9d01-6b0c8a0d61ae",
+      "name": "@tool GET FILES1"
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.output }}",
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{\n\t\"ML_task\": \"Classification\"\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        -720,
+        160
+      ],
+      "id": "b6f67f21-e084-4b43-b587-f3384c7d18ab",
+      "name": "Information Extractor"
+    },
+    {
+      "parameters": {
+        "model": "rnj-1:8b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmOllama",
+      "typeVersion": 1,
+      "position": [
+        -720,
+        368
+      ],
+      "id": "43063db2-0ede-4f6a-a39d-b3fe220464d6",
+      "name": "Ollama Model"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output.ML_task }}",
+                    "rightValue": "classification",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "198881cc-c3e2-4ecc-b942-7a16fbc4f89b"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "classification"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c2924c95-5eb0-431d-896d-b1e5b228d081",
+                    "leftValue": "={{ $json.output.ML_task }}",
+                    "rightValue": "regression",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "regression"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "debb8363-9522-4b3c-b765-17defa671668",
+                    "leftValue": "={{ $json.output.ML_task }}",
+                    "rightValue": "clusterization",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "clusterization"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -272,
+        144
+      ],
+      "id": "460310b2-916b-477c-a904-c82a7b0ea15a",
+      "name": "Switch"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "ca83b3f1-4e77-4661-94fc-f328c7bf974a",
+      "name": "No Operation, do nothing"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        16,
+        192
+      ],
+      "id": "410f9187-7203-4236-ad13-9b510c85665f",
+      "name": "No Operation, do nothing1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        16,
+        432
+      ],
+      "id": "9051ae83-ffd5-4042-819c-491774e9b7e6",
+      "name": "No Operation, do nothing2"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -3360,
+        480
+      ],
+      "id": "9d4dd81a-2a79-49e4-a047-83fd2fd71e3d",
+      "name": "Ollama Chat Model3",
+      "credentials": {
+        "ollamaApi": {
+          "id": "jpliRBF6Kc5jKgbm",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -3200,
+        416
+      ],
+      "id": "c9b61811-f58c-43d7-9fe5-e7783caac8c9",
+      "name": "Simple Memory5"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fastapi:8000/merge",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "dataset2_path",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters1_Value', ``, 'string') }}"
+            },
+            {
+              "name": "dataset1_path",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters1_Value', ``, 'string') }}"
+            },
+            {
+              "name": "merge_field",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters2_Value', ``, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -3072,
+        560
+      ],
+      "id": "5c015564-6191-444f-a098-8af0652777aa",
+      "name": "@tool merge"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -2896,
+        544
+      ],
+      "id": "9886f488-6193-4eab-b8aa-6471a6510b68",
+      "name": "@tool EXEC5"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a dataset merging agent.\nYou have two tools: EXEC and merge tool.\n\nINPUT: {{ $json.output }}\n\nSTEP 1 — Parse paths (EXEC):\nimport pandas as pd, json, re, os\n\nraw = \"\"\"{{ $json.output }}\"\"\"\nraw = re.sub(r\"```json|```\", \"\", raw).strip()\n\ntry:\n    parsed = json.loads(raw)\n    path_string = parsed[\"dataset_path\"]\nexcept:\n    path_string = \" \".join(re.findall(r\"/app/data/[\\w\\-.]+\\.csv\", raw))\n\npaths = [p.strip() for p in re.split(r\"[,\\s]+\", path_string) if p.strip().endswith(\".csv\")]\nprint(\"PATHS:\", paths)\nfor p in paths:\n    assert os.path.exists(p), f\"NOT FOUND: {p}\"\n\nSTEP 2 — Find correct merge key (EXEC):\ndfs = {}\nfor p in paths:\n    df = pd.read_csv(p)\n    dfs[p] = df\n    print(f\"{os.path.basename(p)}: shape={df.shape}\")\n    print(f\"Columns: {list(df.columns)}\")\n    print(df.head(2))\n\n# Find common columns\ncommon = set.intersection(*[set(df.columns) for df in dfs.values()])\nprint(\"Common columns:\", common)\n\n# For each common column — check how many values overlap between datasets\ndf_list = list(dfs.values())\noverlap_scores = {}\nfor col in common:\n    try:\n        vals = [set(df[col].astype(str).unique()) for df in df_list]\n        overlap = len(set.intersection(*vals))\n        total = max(len(v) for v in vals)\n        score = overlap / total if total > 0 else 0\n        overlap_scores[col] = (overlap, score)\n        print(f\"{col}: {overlap} overlapping values, score={score:.2f}\")\n    except:\n        pass\n\n# Pick column with HIGHEST overlap — not just highest cardinality\nmerge_key = max(overlap_scores, key=lambda c: overlap_scores[c][0])\nprint(f\"Selected merge_key: {merge_key} ({overlap_scores[merge_key][0]} overlapping values)\")\n\n# Verify merge will produce rows\ndf0 = df_list[0].copy()\ndf1 = df_list[1].copy()\ndf0[merge_key] = df0[merge_key].astype(str)\ndf1[merge_key] = df1[merge_key].astype(str)\ntest = df0.merge(df1, on=merge_key, how=\"inner\")\nprint(f\"Test merge result: {len(test)} rows — if 0, wrong key!\")\n\n# If test gives 0 rows — try next best key\nif len(test) == 0:\n    remaining = sorted(overlap_scores, key=lambda c: overlap_scores[c][0], reverse=True)\n    for candidate in remaining:\n        df0[candidate] = df0[candidate].astype(str)\n        df1[candidate] = df1[candidate].astype(str)\n        test2 = df0.merge(df1, on=candidate, how=\"inner\")\n        print(f\"Trying {candidate}: {len(test2)} rows\")\n        if len(test2) > 0:\n            merge_key = candidate\n            print(f\"Switched merge_key to: {merge_key}\")\n            break\n\nSTEP 3 — Call merge tool:\nNow call merge tool with:\n- dataset1_path = paths[0]\n- dataset2_path = paths[1]\n- merge_field = merge_key selected in STEP 2\n\nIMPORTANT: merge_field must be the exact column name string from STEP 2.\nDo NOT guess or hardcode merge_field — always use the value computed in STEP 2.\n\nIf 3+ files — call merge tool again:\n- dataset1_path = \"/app/data/merged_dataset.csv\"\n- dataset2_path = paths[2]\n- merge_field = find common key between merged result and next file\n\nSTEP 4 — Verify result (EXEC):\nimport pandas as pd\ndf_merged = pd.read_csv(\"/app/data/merged_dataset.csv\")\nprint(f\"Merged shape: {df_merged.shape}\")\nprint(df_merged.head(3))\nassert len(df_merged) > 2, f\"Too few rows! Merge key was wrong. Got: {len(df_merged)}\"\n\nReturn ONLY this, no markdown:\n{\"dataset_path\": \"/app/data/merged_dataset.csv\", \"rows\": <N>, \"merge_key\": \"<key>\"}\n\nRULES:\n- ALWAYS run STEP 2 fully before calling merge tool\n- ALWAYS verify overlap count before choosing merge_key\n- NEVER call merge tool with a key that produced 0 rows in test\n- merge tool is called with paths only — NOT with data arrays\n- Return JSON immediately after STEP 4 passes",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -3328,
+        160
+      ],
+      "id": "1a539e12-89c3-40dc-9095-cfb0c4e08c2d",
+      "name": "AI Agent merge"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC": {
+      "ai_tool": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool GET FILES": {
+      "ai_tool": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Downloader AGENT": {
+      "main": [
+        [
+          {
+            "node": "AI Agent merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemma4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Cleaning Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "Uni variate",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download dataset": {
+      "ai_tool": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleaning Agent": {
+      "main": [
+        [
+          {
+            "node": "Uni variate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Uni variate",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemma": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Cleaning Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory2": {
+      "ai_memory": [
+        [
+          {
+            "node": "Cleaning Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC2": {
+      "ai_tool": [
+        [
+          {
+            "node": "Uni variate",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Uni variate": {
+      "main": [
+        [
+          {
+            "node": "Bi variate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory3": {
+      "ai_memory": [
+        [
+          {
+            "node": "Bi variate",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Bi variate",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC3": {
+      "ai_tool": [
+        [
+          {
+            "node": "Bi variate",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bi variate": {
+      "main": [
+        [
+          {
+            "node": "Feature Engineering",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Feature Engineering",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory4": {
+      "ai_memory": [
+        [
+          {
+            "node": "Feature Engineering",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC4": {
+      "ai_tool": [
+        [
+          {
+            "node": "Feature Engineering",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool GET FILES1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Feature Engineering",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Feature Engineering": {
+      "main": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Information Extractor": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool merge": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent merge",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory5": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent merge",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent merge",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC5": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent merge",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent merge": {
+      "main": [
+        [
+          {
+            "node": "Cleaning Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "90e98902-d975-417f-867b-3caa84e1a5c9",
+  "meta": {
+    "instanceId": "7f1ffcfc898b97830bd747269b030a45050ec7f8acb087316a4977ea3bf8dc03"
+  },
+  "id": "vxjI67gTMRouRALN",
+  "tags": []
+}
