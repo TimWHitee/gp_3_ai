@@ -45,8 +45,8 @@ class DuckDuckGoSearchRequest(BaseModel):
     max_results: int = Field(default=5, ge=1, le=10)
 
 class MergeRequest(BaseModel):
-    dataset1: list[dict[str, Any]]
-    dataset2: list[dict[str, Any]]
+    dataset1_path: str
+    dataset2_path: str
     merge_field: str
 
 class DuckDuckGoHTMLParser(HTMLParser):
@@ -262,11 +262,11 @@ async def health():
 @app.post("/merge")
 async def merge(req: MergeRequest):
     try:
-        df1 = pd.DataFrame(req.dataset1)
-        df2 = pd.DataFrame(req.dataset2)
+        df1 = pd.read_csv(req.dataset1_path)
+        df2 = pd.read_csv(req.dataset2_path)
         merged = df1.merge(df2, on=req.merge_field, how="inner", suffixes=("_1", "_2"))
         return {
-            "merged": merged.to_dict(orient="records"),
+            "merged_path": "/app/data/merged_dataset.csv",
             "rows": len(merged)
         }
     except Exception:
