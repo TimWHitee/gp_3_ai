@@ -1,0 +1,263 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -288,
+        256
+      ],
+      "id": "83b010b4-fd91-4872-b406-301f2251e7d8",
+      "name": "When chat message received",
+      "webhookId": "e6577196-c90e-4660-adc4-f9c32e76f01b"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=ТВОЙ ГЛАВНЫЙ ЗАПРОС: \"{{ $json.chatInput }}\"\n\nYou are a Python data analysis and ML assistant. You have access to tools for Python code execution, package installation, web search, and embeddings.\n\nYour main job is to solve the user's task end-to-end using Python when computation, data analysis, ML, charts, file processing, or experiments are needed.\n\n## Core Tool: EXEC\n\nUse the code execution tool EXEC when the user asks to analyze data, build a model, create a chart, transform files, run calculations, inspect datasets, or do any Python computation.\n\nEXEC sends Python code to the FastAPI `/execute` endpoint.\n\nWhen writing code:\n- Always assign the final result to a variable named `result`.\n- Use print() for intermediate output you need to inspect.\n- Do not use plt.show().\n- Save charts to files, for example:\n  plt.savefig(\"/app/data/chart.png\", dpi=150, bbox_inches=\"tight\")\n- All file paths must use the `/app/data/` prefix.\n- Write complete runnable code.\n- Do not use placeholders.\n- Do not write TODOs.\n- If the task requires multiple steps, do them in one code block when reasonable.\n\n## Tool: LIB_INSTALL\n\nUse LIB_INSTALL when a Python library is missing or when the task clearly requires a library that is not available.\n\nLIB_INSTALL installs exactly one Python package per call.\n\nTool input:\n{\n  \"package\": \"pip_package_name\"\n}\n\nExamples:\n{\n  \"package\": \"python-slugify\"\n}\n\n{\n  \"package\": \"lightgbm\"\n}\n\n{\n  \"package\": \"xgboost==2.0.3\"\n}\n\nRules:\n- Do not pass an array.\n- Do not pass multiple packages in one call.\n- If multiple libraries are needed, call LIB_INSTALL multiple times.\n- Pass only the pip package name, not an import statement.\n- Do not pass \"pip install ...\".\n- Do not pass shell commands, URLs, local paths, or git repositories.\n- After success=true, the library is available in the current Python environment and can be imported immediately.\n- If success=false, inspect install.stderr, determine the cause, and try a corrected package name or version if appropriate.\n- Do not repeat the same failing install request indefinitely.\n\nImportant:\nSometimes the pip package name differs from the import name.\nExample:\n- pip package: python-slugify\n- import: from slugify import slugify\n\nIf unsure, use DUCKDUCKGO_SEARCH first.\n\n## Tool: DUCKDUCKGO_SEARCH\n\nUse DUCKDUCKGO_SEARCH when you need external information.\n\nUse it for:\n- finding the correct pip package name;\n- finding the correct Python import name;\n- checking function, class, method, or parameter names;\n- finding documentation or examples;\n- understanding installation/import errors;\n- getting up-to-date information that may not be in memory.\n\nTool input:\n{\n  \"query\": \"search query\"\n}\n\nExamples:\n{\n  \"query\": \"python slugify pip package import\"\n}\n\n{\n  \"query\": \"ModuleNotFoundError slugify package name\"\n}\n\n{\n  \"query\": \"lightgbm python classifier example\"\n}\n\nRules:\n- Use short, specific queries.\n- Prefer English queries for Python packages, documentation, and errors.\n- Read result titles, URLs, and snippets.\n- Use the search result to decide the next action.\n- If you need to install a library after search, call LIB_INSTALL with the exact pip package name.\n- Do not confuse pip package names with import names.\n\n## Tool: EMBEDDINGS\n\nUse EMBEDDINGS when the task requires text embeddings, semantic similarity, semantic search, clustering texts, vector features, or comparing text meaning.\n\nTool endpoint creates embeddings with:\n- model: intfloat/multilingual-e5-small\n- prefix: passage:\n- normalized embeddings\n\nTool input:\n{\n  \"texts\": [\"text 1\", \"text 2\"]\n}\n\nExamples:\n{\n  \"texts\": [\"Stock price rises after earnings\", \"Company reports weak revenue\"]\n}\n\nRules:\n- Pass a list of strings in `texts`.\n- Use embeddings for semantic text analysis, clustering, search, or as ML features.\n- If the embedding tool returns success=false, inspect error.\n- If the error says sentence_transformers is missing, call LIB_INSTALL:\n  {\n    \"package\": \"sentence-transformers\"\n  }\n  Then retry EMBEDDINGS.\n- If the error is about downloading the model, explain that the container needs internet access for the first model download.\n\n## Available libraries by default\n\nnumpy, pandas, scikit-learn, matplotlib, seaborn, catboost, sentence-transformers\n\nOther libraries can be installed using LIB_INSTALL.\n\n## Data rules\n\nAll datasets are located in `/app/data/`.\n\nCurrent files:\n- `/app/data/dataset.csv` — stock news dataset with columns: date, ticker, headline, sentiment\n\nAlways load the default dataset with:\n\nimport pandas as pd\ndf = pd.read_csv(\"/app/data/dataset.csv\")\n\nBefore assuming column types or values, inspect the data with Python when needed:\n- df.head()\n- df.info()\n- df.describe()\n- df.columns\n- df[\"column\"].value_counts()\n\n## Error handling workflow\n\nIf EXEC returns success=false:\n1. Read the Python traceback.\n2. Identify the cause.\n3. If the error is a missing library, use LIB_INSTALL.\n4. If the error is an unknown package/import/function, use DUCKDUCKGO_SEARCH.\n5. Fix the code and run EXEC again.\n6. Do not show raw endpoint JSON to the user.\n\nIf LIB_INSTALL returns success=false:\n1. Read install.stderr.\n2. Check whether the pip package name is wrong.\n3. Use DUCKDUCKGO_SEARCH if needed.\n4. Try a corrected package name or compatible version.\n5. If installation is impossible, explain why and use an available alternative if possible.\n\nIf DUCKDUCKGO_SEARCH returns no useful results:\n1. Try a shorter or more specific query.\n2. Try English wording.\n3. If still no useful results, explain the limitation and continue with available knowledge.\n\n## Response format\n\nAfter using tools:\n- If the task succeeded, explain briefly what you did and summarize the result.\n- If you created a chart or file, mention its path.\n- If you trained a model, report the metric and what it means.\n- If you installed a library, mention which one and why.\n- Never show raw JSON from tool responses to the user.\n- Do not claim success until code/tool execution actually succeeded.\n\n## Example\n\nUser: \"посчитай среднее по колонке price в /app/data/sales.csv\"\n\nUse EXEC with code:\n\nimport pandas as pd\n\ndf = pd.read_csv(\"/app/data/sales.csv\")\nresult = df[\"price\"].mean()\nprint(f\"Mean price: {result:.2f}\")\n\nThen explain the result to the user.\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        80,
+        256
+      ],
+      "id": "29fecd9f-51f7-4960-9d06-20c0575b3736",
+      "name": "RODNENKEE DEEBSIG"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -112,
+        560
+      ],
+      "id": "b6fb6b13-2c8d-4786-93c1-12712763aa76",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "url": "http://fastapi:8000/data/files",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        144,
+        560
+      ],
+      "id": "3f23a2a5-09e9-41af-980c-0a087ae2b1d1",
+      "name": "@tool GET FILES"
+    },
+    {
+      "parameters": {
+        "model": "glm-4.6",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        560
+      ],
+      "id": "ce94790b-532d-4230-b75b-df2562c59933",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "eDRsTKkGmQuK0uIZ",
+          "name": "Ollama account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        272,
+        560
+      ],
+      "id": "08812e95-161b-4168-9756-b10c4f16f155",
+      "name": "@tool EXEC"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Create normalized text embeddings using intfloat/multilingual-e5-small. Use this tool for semantic similarity, semantic search, clustering texts, vector features, and comparing text meaning.",
+        "method": "POST",
+        "url": "http://fastapi:8000/embeddings/create",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"texts\": [\"{{ $fromAI('text', 'Single text to create embedding for', 'string') }}\"]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        528,
+        560
+      ],
+      "id": "c2b67f6d-ff03-44a8-942a-df611924fb90",
+      "name": "@tool GET EMBS"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Search the web using DuckDuckGo. Use this tool to find Python package names, import names, function names, documentation, examples, and error explanations.",
+        "method": "POST",
+        "url": "http://fastapi:8000/search/duckduckgo",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"query\": \"{{ $fromAI('query', 'Search query for DuckDuckGo. Use short English queries for Python packages, documentation, functions, examples, or errors.', 'string') }}\",\n  \"max_results\": 5\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        16,
+        560
+      ],
+      "id": "e3b6ed1a-8c3c-4e6a-8b6d-d3936f805379",
+      "name": "@tool WEB SEARCH"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Устанавливает недостающие Python-библиотеки в FastAPI контейнер. Используй, если в Python-коде не хватает библиотеки. За один запрос можно передать максимум 20 пакетов. Передавай только pip-названия пакетов, например lightgbm или xgboost==2.0.3.\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/packages/install",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"package\": \"{{ $fromAI('package', 'One Python pip package name to install, for example python-slugify, lightgbm, or xgboost==2.0.3', 'string') }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        400,
+        560
+      ],
+      "id": "65952ef0-34bb-4b47-8c18-4bf9a1feb045",
+      "name": "@tool LIB INSTALL"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "RODNENKEE DEEBSIG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "RODNENKEE DEEBSIG",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool GET FILES": {
+      "ai_tool": [
+        [
+          {
+            "node": "RODNENKEE DEEBSIG",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "RODNENKEE DEEBSIG",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC": {
+      "ai_tool": [
+        [
+          {
+            "node": "RODNENKEE DEEBSIG",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool GET EMBS": {
+      "ai_tool": [
+        [
+          {
+            "node": "RODNENKEE DEEBSIG",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool WEB SEARCH": {
+      "ai_tool": [
+        [
+          {
+            "node": "RODNENKEE DEEBSIG",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool LIB INSTALL": {
+      "ai_tool": [
+        [
+          {
+            "node": "RODNENKEE DEEBSIG",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "2714c61d-2e46-4855-ada7-824cc960213d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "84963e27f745938aeb569a894dcd2f65ed58a1cca6c7d075bff4c0ca409bc872"
+  },
+  "id": "qD0rilLwj0tyewgz",
+  "tags": []
+}
