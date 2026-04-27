@@ -14,7 +14,8 @@ import threading
 import traceback
 from urllib.parse import parse_qs, quote_plus, unquote, urlparse
 from urllib.request import Request, urlopen
-
+import pandas as pd
+from typing import Any
 
 app = FastAPI()
 
@@ -41,6 +42,10 @@ class DuckDuckGoSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=300)
     max_results: int = Field(default=5, ge=1, le=10)
 
+class MergeRequest(BaseModel):
+    dataset1: list[dict[str, Any]]
+    dataset2: list[dict[str, Any]]
+    merge_field: str
 
 class DuckDuckGoHTMLParser(HTMLParser):
     def __init__(self):
@@ -228,6 +233,21 @@ async def execute(req: ExecuteRequest):
 async def health():
     return {"status": "ok"}
 
+@app.post("/merge")
+async def merge(req: MergeRequest):
+    try:
+        df1 = pd.DataFrame(req.dataset1)
+        df2 = pd.DataFrame(req.dataset2)
+        merged = df1.merge(df2, on=req.merge_field, how="inner", suffixes=("_1", "_2"))
+        return {
+            "merged": merged.to_dict(orient="records"),
+            "rows": len(merged)
+        }
+    except Exception:
+        return {
+            "success": False,
+            "error": traceback.format_exc(),
+        }
 
 @app.post("/packages/install")
 async def install_package(req: InstallPackageRequest):
