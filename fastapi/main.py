@@ -24,8 +24,6 @@ PIP_INSTALL_TIMEOUT = 600
 
 class ExecuteRequest(BaseModel):
     code: str
-    timeout: int = 30
-
 
 class InstallPackageRequest(BaseModel):
     package: str = Field(min_length=1, max_length=120)
