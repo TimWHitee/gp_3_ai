@@ -27,31 +27,28 @@ class ExecuteRequest(BaseModel):
     timeout: int = 30
 
 
-class InstallPackagesRequest(BaseModel):
-    packages: list[str] = Field(min_length=1, max_length=20)
+class InstallPackageRequest(BaseModel):
+    package: str = Field(min_length=1, max_length=120)
 
 
 class EmbeddingsRequest(BaseModel):
     texts: list[str] = Field(min_length=1, max_length=1000)
 
 
-def build_pip_install_command(packages: list[str]) -> tuple[list[str], list[str]]:
-    safe_packages = []
-    for package in packages:
-        package = package.strip()
-        if not package or not PACKAGE_PATTERN.fullmatch(package):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported package spec: {package!r}",
-            )
-        safe_packages.append(package)
-    return safe_packages, [
+def build_pip_install_command(package: str) -> tuple[str, list[str]]:
+    package = package.strip()
+    if not package or not PACKAGE_PATTERN.fullmatch(package):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported package spec: {package!r}",
+        )
+    return package, [
         sys.executable,
         "-m",
         "pip",
         "install",
         "--no-cache-dir",
-        *safe_packages,
+        package,
     ]
 
 
@@ -152,22 +149,22 @@ async def health():
 
 
 @app.post("/packages/install")
-async def install_packages(req: InstallPackagesRequest):
-    packages, command = build_pip_install_command(req.packages)
+async def install_package(req: InstallPackageRequest):
+    package, command = build_pip_install_command(req.package)
     install_result = run_command(command, PIP_INSTALL_TIMEOUT)
     if install_result["returncode"] != 0:
         return {
             "success": False,
-            "packages": packages,
+            "package": package,
             "requirements_added": [],
             "install": install_result,
         }
 
-    requirements_added = append_missing_requirements(packages)
+    requirements_added = append_missing_requirements([package])
 
     return {
         "success": True,
-        "packages": packages,
+        "package": package,
         "requirements_added": requirements_added,
         "install": install_result,
     }

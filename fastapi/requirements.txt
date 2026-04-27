@@ -8,3 +8,4 @@ seaborn
 catboost
 pydantic
 sentence-transformers
+humanize
