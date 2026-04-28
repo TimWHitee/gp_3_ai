@@ -4,6 +4,5 @@ __pycache__/
 *.pyo
 n8n_data/
 models/*.cbm
-models/*.pkl
 data/
 a.py
