@@ -1,0 +1,1641 @@
+{
+  "name": "Main workflow EDA",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -1872,
+        -64
+      ],
+      "id": "43ea6614-d423-491f-965e-29c30d57a4f9",
+      "name": "When chat message received",
+      "webhookId": "3bb3e430-d848-41b7-9c0b-799876e5a169"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -768,
+        192
+      ],
+      "id": "ff2b8af3-d51e-44db-9814-b865354de646",
+      "name": "@tool EXEC"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Returns list of datasets",
+        "url": "http://fastapi:8000/data/files",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -928,
+        192
+      ],
+      "id": "7a864732-17e1-4dcb-9aef-58bd82521b12",
+      "name": "@tool GET FILES"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a file download agent. Your task is to download datasets from TWO URLs and return paths to extracted CSV files.\n\nTOOLS AVAILABLE:\n- DOWNLOAD TOOL (POST /data/download) — downloads file by URL into /app/data\n- EXEC tool — executes Python code\n- GET FILES tool — lists files in /app/data\n\nSTEP 1 — Download first archive:\nCall DOWNLOAD TOOL:\n{\n  \"url\": \"<first URL>\",\n  \"filename\": \"dataset1.zip\"\n}\nCheck response has \"success\": true. If false — stop and report error.\n\nSTEP 2 — Download second archive:\nCall DOWNLOAD TOOL:\n{\n  \"url\": \"<second URL>\",\n  \"filename\": \"dataset2.zip\"\n}\nCheck response has \"success\": true. If false — stop and report error.\n\nSTEP 3 — Extract both archives using EXEC tool and print exact CSV paths:\nimport os, zipfile\n\nfor archive in [\"/app/data/dataset1.zip\", \"/app/data/dataset2.zip\"]:\n    if os.path.exists(archive) and zipfile.is_zipfile(archive):\n        with zipfile.ZipFile(archive, \"r\") as z:\n            z.extractall(\"/app/data\")\n        os.remove(archive)\n\ncsv_files = [f\"/app/data/{f}\" for f in os.listdir(\"/app/data\") if f.endswith(\".csv\")]\nprint(\"CSV_PATHS:\", csv_files)\n\nSTEP 4 — Call GET FILES tool. Read the actual filenames from the response.\n\nSTEP 5 — Return ONLY this JSON:\n{\n  \"dataset_paths\": [\n    \"<exact path from GET FILES response>\",\n    \"<exact path from GET FILES response>\"\n  ]\n}\n\nCRITICAL RULES:\n- NEVER invent or guess filenames\n- dataset_paths values MUST come directly from GET FILES tool response\n- If GET FILES returns no CSV files — report error, do not return JSON\n- Copy filenames character by character from tool output\n\n\nURLs: {{ $('When chat message received').item.json.chatInput }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -1136,
+        -64
+      ],
+      "id": "5a7faac5-5f8c-46c6-aa35-79f22316dc0e",
+      "name": "Downloader AGENT"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -1248,
+        192
+      ],
+      "id": "d8fc374a-3af2-46bc-8c4d-4b3123e512f0",
+      "name": "Gemma4",
+      "credentials": {
+        "ollamaApi": {
+          "id": "K3ZYQX7oQlYxbRn2",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to use server environment, analyze datasets, save datasets locally\n\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        816,
+        176
+      ],
+      "id": "41640115-ad4a-419d-a0c9-b713dd5e6c81",
+      "name": "@tool EXEC1"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Downloads a dataset file from a direct URL and saves it into /app/data inside the container. \nUseful for loading Kaggle datasets, zip archives, CSV files, and other downloadable datasets before processing them with Python or AI agents.\n\nThis tool should be used when the task requires:\n- downloading a dataset from a provided link\n- saving external files for further analysis\n- preparing data for ML pipelines\n- loading Kaggle dataset archives into the working environment\n\nInput:\n{\n  \"url\": \"string, required — direct download link to the dataset\",\n  \"filename\": \"string, optional — custom filename to save as inside /app/data\"\n}\n\nExample:\n{\n  \"url\": \"https://www.kaggle.com/api/v1/datasets/download/asifxzaman/global-ai-vs-human-content-dataset-2026\",\n  \"filename\": \"global-ai-vs-human-content-dataset-2026.zip\"\n}",
+        "method": "POST",
+        "url": "http://fastapi:8000/data/download",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', ``, 'string') }}"
+            },
+            {
+              "name": "filename",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters1_Value', ``, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -1088,
+        192
+      ],
+      "id": "e61347c9-d2a1-4872-a47f-a7657d47a835",
+      "name": "Download dataset"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=\nYou are a data cleaning agent. Your task is to handle missing values in a dataset.\nUse EXEC tool to access Python and server. ALL DATA OPERATIONS MUST BE DONE VIA EXEC TOOL ONLY.\n\nINPUT: path to a dataset file (CSV) {{ $json.output }}\n\nSTRICT RULES:\n- NEVER write, invent, or fabricate any data values yourself\n- NEVER hardcode any values — always compute them from the data (median, mode, etc.)\n- NEVER output data rows or cell values in your text\n- ALL operations (fill, drop, save) must happen inside EXEC tool code only\n- Do NOT stop mid-way — always complete all steps and return final JSON\n- ALWAYS check column dtype before filling — never apply median to non-numeric columns\n- NEVER DROP COLUMNS — the only exception is ID columns and Unnamed index columns\n- NEVER drop columns due to high missing percentage — fill them instead\n- ALL missing text/categorical values MUST be filled with \"Unknown\"\n- ALL missing numeric values MUST be filled with median\n- ALL missing bool values MUST be filled with mode\n\nINSTRUCTIONS:\n\n1. Use EXEC tool to load and inspect:\n   import pandas as pd\n   import os\n   df = pd.read_csv(\"<input_path>\")\n   print(df.info())\n   print(df.isnull().sum())\n   print(df.dtypes)\n\n2. Use EXEC tool to clean — use this exact pattern:\n   decisions = {}\n\n   # STEP 1: Drop only ID and Unnamed columns — nothing else\n   id_keywords = ['unnamed', 'row_id', 'index']\n   id_exact = ['id', 'Unnamed: 0']\n   cols_to_drop = [\n       col for col in df.columns\n       if col in id_exact\n       or col.lower() in id_keywords\n       or col.strip().lower() == 'id'\n   ]\n   for col in cols_to_drop:\n       df = df.drop(columns=[col])\n       decisions[col] = \"DROPPED — ID or index column\"\n\n   # STEP 2: Fill missing values — DO NOT drop any column\n   for col in df.columns:\n       missing_pct = df[col].isnull().mean() * 100\n       if missing_pct == 0:\n           continue\n       elif pd.api.types.is_bool_dtype(df[col]):\n           df[col] = df[col].fillna(df[col].mode()[0])\n           decisions[col] = f\"FILLED with mode — {missing_pct:.1f}% missing (bool)\"\n       elif pd.api.types.is_numeric_dtype(df[col]):\n           df[col] = df[col].fillna(df[col].median())\n           decisions[col] = f\"FILLED with median — {missing_pct:.1f}% missing (numeric)\"\n       elif pd.api.types.is_object_dtype(df[col]):\n           df[col] = df[col].fillna(\"Unknown\")\n           decisions[col] = f\"FILLED with 'Unknown' — {missing_pct:.1f}% missing (text)\"\n       else:\n           df[col] = df[col].fillna(\"Unknown\")\n           decisions[col] = f\"FILLED with 'Unknown' — {missing_pct:.1f}% missing (other)\"\n\n   # STEP 3: Drop entirely empty rows only\n   empty_before = len(df)\n   df = df.dropna(how='all')\n   decisions['_empty_rows'] = f\"DROPPED {empty_before - len(df)} fully empty rows\"\n\n   # STEP 4: Drop rows with missing target\n   if 'label' in df.columns:\n       before = len(df)\n       df = df.dropna(subset=['label'])\n       decisions['label_rows'] = f\"DROPPED {before - len(df)} rows with missing target\"\n\n   print(df.isnull().sum())\n   print(df.shape)\n   print(\"DECISIONS:\", decisions)\n\n3. Use EXEC tool to save:\n   df.to_csv(\"/app/data/cleaned_dataset.csv\", index=False)\n   assert os.path.exists(\"/app/data/cleaned_dataset.csv\"), \"File not saved!\"\n   print(f\"Saved: /app/data/cleaned_dataset.csv, size: {os.path.getsize('/app/data/cleaned_dataset.csv')} bytes\")\n\n4. Use EXEC tool to verify:\n   df_check = pd.read_csv(\"/app/data/cleaned_dataset.csv\")\n   print(df_check.isnull().sum())\n   print(df_check.shape)\n\n5. STOP and return final JSON immediately + short summary:\n{\n  \"dataset_path\": \"/app/data/cleaned_dataset.csv\",\n  \"shape_before\": \"<rows>x<cols>\",\n  \"shape_after\": \"<rows>x<cols>\",\n  \"decisions\": {\n    \"<column>\": \"<action and reason>\"\n  }\n}\n\nThen write 3-5 sentences summary: what was found, what was dropped, what was filled and how.\n\nInput: Use tool get file paths\n\nAFTER SAVING FILE — DO NOT RUN ANY MORE CODE. RETURN JSON AND SUMMARY IMMEDIATELY.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        512,
+        -64
+      ],
+      "id": "9e227414-d56d-46ce-8634-48c207a3c955",
+      "name": "Cleaning Agent"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        144
+      ],
+      "id": "e0fa5ed3-b63e-45db-ab03-e25f387e7dcf",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "lseuwCj8Q4vbiBJx",
+          "name": "Ollama account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to use server environment, analyze datasets, save datasets locally\n\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        1424,
+        144
+      ],
+      "id": "43acee06-c7ec-456e-b9ab-c0517331ffa6",
+      "name": "@tool EXEC2"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a data analysis agent.\n\nPerform fast univariate EDA on a cleaned CSV dataset. Your goal in this node is to return:\n- dataset shape\n- numeric, categorical,text and date columns\n- target column\n- dropped columns, outliers and anomalies summary\n- distribution, categorical, text summary\n- saved plot files\n- warnings if leakage risk exists\n\nUse EXEC tool only for:\n- loading data\n- calculations\n- visualizations\n- saving files\n\nINPUT:\n{{ $json.output }}\n\nRULES:\n- Never fabricate results\n- Save all plots as PNG in /app/data/plots/\n- Do not use LabelEncoder for full text columns\n- Do not treat target column (label/target/class) as a normal feature\n- Return only final JSON after analysis\n\nTASKS:\n\n1. Load dataset\n- read CSV\n- get shape, columns, dtypes\n- check missing values\n\n2. Detect columns:\n- numeric\n- categorical (low-cardinality)\n- text (long/high-cardinality text)\n- date\n- target column if exists\n- redundant columns if exist\n\n3. If there are redundant columns (which duplicate information or are not informative at all, like 'Unnamed: 0'), drop them\n\n4. Numeric analysis:\n- basic statistics\n- check if data is destributed according to one of the following laws: Normal distribution law (Gauss' law), Logarithmically normal distribution, Gamma distribution, Exponential distribution law, Poisson distribution, Geometric distribution, Binomial distribution, Bernoulli. \n- outlier detection (IQR). If outliers were detected in a column, remember the final objective of your work, then decide if the outliers are useful for your research, or obstruct it. If you concider outliers redundant, delete the rows where outliers are detected in this column. Do this analisys for every numeric column.\n- scale all numeric columns using Standard Scaler.\n- histogram + boxplot + violin plot\n\n5. Categorical analysis:\n- value counts\n- top categories\n- pie chart or bar chart\n- if values in a column have a natural order (like 'small', 'normal', 'large'), use Ordinal Encoding to transform the column. In all other cases, use One Hot Encoding to transform the column. If a column has more than 10 unique values (categories), arrange the values in descending order of occurrence, leave 10 most common values as they are, and all least common values as \"Other\", then use One Hot Encoding. New column/columns must be added to the dataset, the initial column must be dropped.\n\n6. Text analysis:\n- average text length\n- text length histogram\n- Using GET EMBS, code the text features. New columns (embeddings) must be added to the dataset, the initial column must be dropped.\n\n7. Date analysis:\n- considering the final goal of your work, transform the column to a useful format, if necessary, extract part of the date (year) as a new column\n- histogram of date distribution\n\n8. Target analysis:\n- class balance (if categorical)\n- target distribution plot \n\n9. Anomalies detection:\n- check all columns for values which appear to be unnatural (a negative value for a column indicating a natural variable, improbable date etc) and delete rows, where such values are encountered\n\n10. Save all plots\n\n11. Return a text summary which includes dataset size and content description, data types, statistical characteristics for numerical columns and class distribution for categorical columns\n\n12. Return final JSON with:\n- dataset shape\n- numeric columns\n- categorical columns\n- text columns\n- date columns\n- target column\n- dropped columns summary (if there were any)\n- outliers summary\n- distribution summary\n- categorical summary\n- text summary\n- target summary\n- anomalies summary\n- saved plot files\n- warnings if leakage risk exists\n\n\nDO NOT WRITE like: \"Calling _tool_EXEC2 with input\", call tools instead\n\nSTOP after returning JSON\n",
+        "options": {
+          "maxIterations": 20,
+          "returnIntermediateSteps": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1200,
+        -64
+      ],
+      "id": "065bbed8-3fb4-415b-91e5-abb937a2875c",
+      "name": "Uni variate"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1648,
+        144
+      ],
+      "id": "af6ed739-95ec-4b40-bcee-6237c4f56dd8",
+      "name": "Ollama Chat Model1",
+      "credentials": {
+        "ollamaApi": {
+          "id": "lseuwCj8Q4vbiBJx",
+          "name": "Ollama account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to use python on server\n\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        1904,
+        144
+      ],
+      "id": "ed5028cd-1921-4867-ad65-b2eca26a17b5",
+      "name": "@tool EXEC3"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Сделай Feature Selection и Feature Extraction по инструкциям ниже:\n\nFeature extraction:\n\n1) используй информацию, полученную на предыдущих этапах: какие признаки есть в датасете, что они обозначают, как они были закодированы, каковы корреляции между ними. Подумай, какие их признаков выгодно использовать в комбинации, а какие нет\n2) предложи 5 новых признаков, которые можно создать из исходных признаков в датасете. Используй математические операции, комбинации из нескольких признаков. Следи, чтобы новые признаки имели смысл.\n3) выбери 2+ наилучших из 5 признаков. Признак является ценным если он информативен, может продемонстрировать большую полезность, чем исходные признаки, на основе которых он создан, в контексте поставленной задачи, и не имеет внутренних проблем (например не может давать некорректные значения из-за деления на 0). Добавь эти признаки в датсет и удали признаки, которые использовались для создания новых признаков.\n\nFeature selection:\n\n1) Найди корреляции между новыми признаками, созданными в рамках Feature extraction, и всеми исходными признаками. Используй эту информацию, и информацию, полученную на предыдущих этапах: какие признаки остались в датасете, что они обозначают, как они были закодированы, каковы корреляции между ними. \n2) Проанализируй, какие признаки могут создавать проблему мультиколлинеарности. Из этих признаков выбери те, которые следует удалить, и удали их\n3) Проверь, остались ли в датасете избыточные признаки, не являющиеся информативными и не несущие ценности в рамках решаемой задачи. Если есть, удали их.\n\nдатасет по пути:  {{ $('Cleaning Agent').item.json.output }}\n\nСохрани датасет в ту же папку, вызвав EXEC Tool с pd.to_csv()\nИспользую тул GET FILES проверь, что ты реально сохранил датасет по тому пути.\n\n\n\nв качестве ответа дай путь нового датасета и определи задачу машинного обучения, для которой он будет использоваться\n\nответ в формате \n\n{\n\"dataset_path\": path\n\"ML_task\": classification/regression/clusterization/\n\"Description\": описание фич инжениринга\n}\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2160,
+        -64
+      ],
+      "id": "5c99ff7b-debe-4b4d-a501-cf4c78fffdb9",
+      "name": "Feature Engineering"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        2096,
+        144
+      ],
+      "id": "89d5bbb4-f721-437b-89b3-64227b90cb10",
+      "name": "Ollama Chat Model2",
+      "credentials": {
+        "ollamaApi": {
+          "id": "lseuwCj8Q4vbiBJx",
+          "name": "Ollama account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to use python on server\n\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        2304,
+        144
+      ],
+      "id": "e8b27cd5-630a-4acd-a295-d66201b2d3c4",
+      "name": "@tool EXEC4"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Returns list of datasets",
+        "url": "http://fastapi:8000/data/files",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        2464,
+        144
+      ],
+      "id": "01ba391e-b63b-48b1-9afd-b3a6deeafd25",
+      "name": "@tool GET FILES1"
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.output }}",
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{\n\t\"ML_task\": \"Classification\"\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        2704,
+        -64
+      ],
+      "id": "815cbeeb-090b-4319-b314-8577c6cbb9de",
+      "name": "Information Extractor"
+    },
+    {
+      "parameters": {
+        "model": "rnj-1:8b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmOllama",
+      "typeVersion": 1,
+      "position": [
+        2704,
+        144
+      ],
+      "id": "ba6e8727-a5c1-46e3-9444-611935c165eb",
+      "name": "Ollama Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "K3ZYQX7oQlYxbRn2",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Information Extractor').item.json.output.ML_task }}",
+                    "rightValue": "classification",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "198881cc-c3e2-4ecc-b942-7a16fbc4f89b"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "classification"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c2924c95-5eb0-431d-896d-b1e5b228d081",
+                    "leftValue": "={{ $('Information Extractor').item.json.output.ML_task }}",
+                    "rightValue": "regression",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "regression"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "debb8363-9522-4b3c-b765-17defa671668",
+                    "leftValue": "={{ $('Information Extractor').item.json.output.ML_task }}",
+                    "rightValue": "clusterization",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "clusterization"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        3520,
+        -80
+      ],
+      "id": "efb6e62d-9fd7-440e-be84-033739e22110",
+      "name": "Switch"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1184,
+        880
+      ],
+      "id": "797962e3-41c7-4e8e-a2ee-c6f4b5a46183",
+      "name": "Complex memory"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Returns list of datasets",
+        "url": "http://fastapi:8000/data/files",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        608,
+        160
+      ],
+      "id": "970dc848-e5a7-43f4-9d48-13a60d0133bf",
+      "name": "@tool GET FILES2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fastapi:8000/merge",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "dataset2_path",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Path to the SECOND CSV file only. Single path like /app/data/tools2.csv. Never put two paths here.`, 'string') }}"
+            },
+            {
+              "name": "dataset1_path",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters1_Value', `Path to the FIRST CSV file only. Single path like /app/data/tools1.csv. Never put two paths here.`, 'string') }}"
+            },
+            {
+              "name": "merge_field",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters2_Value', `Datasets are merge on this field`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -64,
+        144
+      ],
+      "id": "efffaf41-2997-45c4-99ee-db0592782069",
+      "name": "@tool merge",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a data merge agent.\n\nTOOLS AVAILABLE:\n- EXEC tool — executes Python code\n- GET FILES tool — lists files in /app/data\n\nSTEP 1 — Call GET FILES tool. Find exactly two CSV files to merge.\n\nSTEP 2 — Call EXEC tool:\nimport pandas as pd\nimport os\n\ndf1 = pd.read_csv(\"/app/data/<file1>\")\ndf2 = pd.read_csv(\"/app/data/<file2>\")\n\nprint(\"df1 shape:\", df1.shape)\nprint(\"df2 shape:\", df2.shape)\nprint(\"df1 columns:\", df1.columns.tolist())\nprint(\"df2 columns:\", df2.columns.tolist())\n\nmerged = pd.concat([df1, df2], ignore_index=True)\nmerged.to_csv(\"/app/data/merged_dataset.csv\", index=False)\n\nassert os.path.exists(\"/app/data/merged_dataset.csv\"), \"File not saved!\"\nprint(f\"Merged rows: {len(merged)}, columns: {merged.columns.tolist()}\")\nprint(f\"Saved: /app/data/merged_dataset.csv\")\n\nSTEP 3 — Check EXEC output: merged rows must be > 0. If 0 — report error and stop.\n\nSTEP 4 — Return ONLY this JSON:\n{\n  \"merged_path\": \"/app/data/merged_dataset.csv\"\n}\n\nInput: {{ $json.output }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -480,
+        -64
+      ],
+      "id": "0ecba465-2f70-42a3-9241-6eae8a737312",
+      "name": "AI Agent merge"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fastapi:8000/data/clear",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1504,
+        -64
+      ],
+      "id": "9d8269ce-5641-44cf-990a-10182bb17f50",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Returns list of datasets in app/data",
+        "url": "http://fastapi:8000/data/files",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -240,
+        240
+      ],
+      "id": "0568ae8c-63b1-422a-adf4-9c857354a154",
+      "name": "@tool GET FILES3"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -432,
+        192
+      ],
+      "id": "cb013c57-7118-45ee-8586-08d24b78d88b",
+      "name": "@tool EXEC5"
+    },
+    {
+      "parameters": {
+        "model": "gpt-oss:120b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        448,
+        176
+      ],
+      "id": "3e7190f2-85d6-4efe-8b53-2efe10be71d3",
+      "name": "gpt-oss 120b",
+      "credentials": {
+        "ollamaApi": {
+          "id": "K3ZYQX7oQlYxbRn2",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {
+          "temperature": 0,
+          "numThread": 4
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -592,
+        160
+      ],
+      "id": "bc0d5666-f9d9-40a5-98db-3b92af00f335",
+      "name": "gpt-oss:120b",
+      "credentials": {
+        "ollamaApi": {
+          "id": "K3ZYQX7oQlYxbRn2",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a machine learning training agent.\n\nPerform hyperparameter tuning, train/val/test split, model training, prediction, and compute relevant quality metrics for a classification task.\n\nUse EXEC tool only for:\n- loading data\n- preprocessing\n- splitting\n- hyperparameter tuning\n- training\n- prediction\n- metric calculation\n- saving results (model, metrics, plots)\n\nINPUT:\n\nAnalytic note: {{ $('Message a model').item.json.content }}\n{{ $('Feature Engineering').item.json.output }}\n\n(The input contains a path to the dataset and an analytical note from previous EDA/analysis. Use the note for additional context – e.g., known data issues, feature descriptions, target distribution – but do not re-execute any EDA steps.)\n\n\n\nRULES:\n- Never fabricate results\n- Detect task type: regression or classification based on target column. If target has ≤10 unique integer/float values that clearly represent categories, or if target is object/category dtype then classification; otherwise regression. If the INPUT already specifies the task, respect it.\n- For classification: use at least 4 evaluation metrics (macro-averaged Precision, Recall, F1-score, and Accuracy). Optionally add ROC-AUC (binary only) and confusion matrix.\n- Use train/validation/test split (e.g., 60/20/20 or 70/15/15) with stratification on the target.\n- Perform hyperparameter tuning using cross-validation only on the training set. Validation set is used only for final model comparison.\n- Do not leak test data into tuning or training.\n- Save the best model as .pkl in /app/data/models/\n- Save all plots as PNG in /app/data/plots/\n- Return final JSON after analysis, including the best model path\n\nTASKS:\n\n1. Load dataset\n- read CSV from INPUT path\n- get shape, columns, dtypes\n- check missing values then handle: if <5% missing per column, drop rows; else impute numeric with median, categorical with mode\n\n2. Identify target and features\n- target column: either specified in INPUT or auto-detect (case-insensitive match: 'target', 'label', 'class', 'y')\n- separate X (features) and y (target)\n\n3. Split data into train, validation, test\n- first split: train+val (80%) and test (20%) using stratification on y\n- second split: from train+val into train (75% of train+val, i.e., 60% of total) and validation (25% of train+val, i.e., 20% of total), again stratified\n- random_state=42 for reproducibility (or configurable from INPUT)\n\n4. Select candidate models (for classification)\n- Choose 3–4 models suitable for classification from the list below (based on dataset size and complexity):\n  - LogisticRegression (baseline)\n  - DecisionTreeClassifier (max_depth limited)\n  - RandomForestClassifier\n  - GradientBoostingClassifier or XGBClassifier or LGBMClassifier (if available)\n- For each model, define a hyperparameter search space (example):\n  - LogisticRegression: C [0.01, 0.1, 1, 10], penalty ['l1', 'l2'] (with appropriate solver), class_weight [None, 'balanced']\n  - DecisionTree: max_depth [3,5,7,10,None], min_samples_split [2,5,10], class_weight [None, 'balanced']\n  - RandomForest: n_estimators [100,200,300], max_depth [5,10,None], min_samples_split [2,5], class_weight [None, 'balanced']\n  - XGBoost: n_estimators [100,200], max_depth [3,5,7], learning_rate [0.01,0.1,0.2], subsample [0.8,1.0]\n- Allow user to override models or grid via INPUT\n\n5. Hyperparameter tuning for each model\n- For each model, perform RandomSearchCV (20 iterations, 5-fold StratifiedKFold CV) on the training set only\n- Scoring: use 'f1_macro' (or 'roc_auc' for binary if preferred; default to 'f1_macro')\n- Record best hyperparameters and best CV score for each model\n\n6. Select the best model\n- Compare models on the validation set using the chosen scoring metric (f1_macro)\n- Retrain the winning model on train+val combined using its best hyperparameters\n- If tie, choose simpler model (LogisticRegression > DecisionTree > RandomForest > Boosting)\n\n7. Evaluate on test set\n- Predict on test set (class labels and probabilities, if available)\n- Compute classification metrics (at least):\n  - Accuracy\n  - Precision (macro avg)\n  - Recall (macro avg)\n  - F1-score (macro avg)\n  - (Optional) ROC-AUC for binary classification, confusion matrix\n- Generate plots:\n  - Confusion matrix (normalized and/or raw counts)\n  - Feature importance (if model supports it: tree-based or linear coefficients). Plot top 20 features.\n  - If binary classification: ROC curve (with AUC value)\n- (If multiclass, consider one-vs-rest ROC curves as optional)\n\n8. Save outputs\n- Best model: /app/data/models/best_model.pkl\n- Test metrics as JSON: /app/data/test_metrics.json\n- Plots saved as PNG (if needed):\n  - confusion_matrix.png\n  - feature_importance.png\n  - (roc_curve.png, if binary)\n- Optional: test predictions CSV (with true/predicted labels and probabilities): /app/data/test_predictions.csv\n\n9. Return final JSON with:\n```json\n{\n  \"dataset_shape\": [rows, columns],\n  \"target_column\": \"name\",\n  \"task_type\": \"classification\",\n  \"num_classes\": int,\n  \"class_distribution\": {\"class_A\": count, ...},\n  \"split_sizes\": {\"train\": n, \"val\": n, \"test\": n},\n  \"candidate_models_tried\": [\"LogisticRegression\", \"RandomForestClassifier\", ...],\n  \"best_model_name\": \"string\",\n  \"best_hyperparameters\": {...},\n  \"test_metrics\": {\n    \"accuracy\": float,\n    \"precision_macro\": float,\n    \"recall_macro\": float,\n    \"f1_macro\": float,\n    \"roc_auc\": float (if binary)\n  },\n  \"saved_plots\": [\"/app/data/plots/confusion_matrix.png\", ...],\n  \"model_path\": \"/app/data/models/best_model.pkl\",\n  \"warnings\": [\"list of issues, e.g., class imbalance, possible overfitting\"]\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        4144,
+        -688
+      ],
+      "id": "7a662683-ca2f-41e0-b609-630dfccc9217",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        4144,
+        -320
+      ],
+      "id": "6d245d1e-a012-4ef8-9637-6ccf97e5391c",
+      "name": "Ollama Chat Model3",
+      "credentials": {
+        "ollamaApi": {
+          "id": "K3ZYQX7oQlYxbRn2",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to use python on server\n\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        4480,
+        -240
+      ],
+      "id": "263a2d98-c316-4c8e-8cb7-559020e49d00",
+      "name": "@tool EXEC6"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "VALoYbN78GWSq5rm",
+          "mode": "list",
+          "cachedResultName": "Long-term memory",
+          "cachedResultUrl": "/projects/Y7XaIgJ0gQlkjHPK/datatables/VALoYbN78GWSq5rm"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTableTool",
+      "typeVersion": 1.1,
+      "position": [
+        4288,
+        -176
+      ],
+      "id": "448a055a-65ba-480a-b577-4722b9b80480",
+      "name": "Insert Long-Term Memory"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a machine learning training agent.\n\nThe input dataset is already cleaned and preprocessed. EDA has been done. In the dataset there are no missing values, all features are numeric. \nYour task is to split to train/val/test, model selection, hyperparameter tuning, training, prediction, and quality metrics.\n\nUse EXEC tool only for:\n- loading data\n- splitting\n- hyperparameter tuning\n- training\n- prediction\n- metric calculation\n- saving results (model, metrics, plots)\n\nINPUT:\nAnalytic note: {{ $('Message a model').item.json.content }}\n{{ $('Feature Engineering').item.json.output }} -- PATH to dataset\n\nRULES:\n- Never fabricate results\n- Use at least 4 metrics that suits the given problem and dataset the best (for example, MAE, MSE, RMSE, R², MAPE)\n- Use train/validation/test split\n- Use cross-validation on train set\n- Perform hyperparameter tuning only on train+validation sets\n- Do not leak test data into tuning or training\n- Save the best model as .pkl in /app/data/models/\n- Save all plots as PNG in /app/data/plots/\n- Return final JSON after analysis, including the best model path\n\nTASKS:\n\n1. Load dataset\n- read CSV from path\n- read JSON\n- get shape, columns, types\n- separate X (all features) and y (target column that you can get from file)\n\n2. Split data into train, validation, test\n- first split: train and test - 80/20\n- second split: from train into train and validation - 75/25 (of train)\n- use train_test_split using shuffle=True\n\n3. Select candidate models (for regression)\n- Choose 3-4 regression models for example from the list below, based on the dataset: \n(LinearRegression, DecisionTree, RandomForest, GradientBoosting or XGBRegressor)\n- For each model, define a hyperparameter search space that suits the best. For example, for RandomForest use n_estimators [50, 100, 150, 200], max_depth [5, 10, None], min_samples_split [2, 5]. \n\n4. Hyperparameter tuning for each model\n- For each model, perform RandomizedSearchCV (20 iterations, 5-fold CV) on the training set only\n- Use neg_mean_squared_error for scoring\n- Record best hyperparameters and best CV score for each model\n\n5. Select the best model\n- Compare the best validation scores (for example, negative MSE or R²) across models on the validation set\n- Retrain the winning model on train+val combined using its best hyperparameters\n- If tie, choose simpler model (use the following system of comparison: LinearRegression > Tree > Forest > Boosting)\n\n6. Evaluate on test set\n- Predict on test set\n- Compute regression metrics (at least 4). Here are the examples:\n  - MAE (Mean Absolute Error)\n  - MSE (Mean Squared Error)\n  - RMSE (Root Mean Squared Error)\n  - R²\n  - MAPE\n- Generate plots:\n  - Scatter plot: Actual vs Predicted\n  - Distribution of residuals (histogram)\n\n7. Save outputs\n- Best model: /app/data/models/best_model.pkl\n- Test metrics as JSON: /app/data/test_metrics.json\n- Plots saved as PNG:\n  - actual_vs_predicted.png   \n  - residuals_histogram.png\n  - feature_importance.png\n- Optional: test predictions CSV: /app/data/test_predictions.csv\n\n8. Return final JSON with:\n```json\n{\n  \"dataset_shape\": [rows, columns],\n  \"target_column\": \"name\",\n  \"task_type\": \"regression\",\n  \"split_sizes\": {\"train\": n, \"val\": n, \"test\": n},\n  \"candidate_models_tried\": [\"LinearRegression\", \"RandomForestRegressor\", ...],\n  \"best_model_name\": \"string\",\n  \"best_hyperparameters\": {...},\n  \"test_metrics\": {\n    \"MAE\": float,\n    \"MSE\": float,\n    \"RMSE\": float,\n    \"R2\": float,\n    \"MAPE\": float (if computed)\n  },\n  \"saved_plots\": [\"/app/data/plots/actual_vs_predicted.png\", ...],\n  \"model_path\": \"/app/data/models/best_model.pkl\",\n  \"warnings\": [\"list of issues, e.g., high residual variance, possible overfitting\"]\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        4768,
+        -64
+      ],
+      "id": "4f8ad2b0-5609-41ec-abc3-8d8e460c0c8c",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": "gemma4:31b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        4768,
+        176
+      ],
+      "id": "1e313b89-a100-4963-9875-4549507dd21c",
+      "name": "Ollama Chat Model4",
+      "credentials": {
+        "ollamaApi": {
+          "id": "K3ZYQX7oQlYxbRn2",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to use python on server\n\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        5120,
+        160
+      ],
+      "id": "004f08a9-9962-40db-aaa5-bcf2204d692d",
+      "name": "@tool EXEC7"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "VALoYbN78GWSq5rm",
+          "mode": "list",
+          "cachedResultName": "Long-term memory",
+          "cachedResultUrl": "/projects/Y7XaIgJ0gQlkjHPK/datatables/VALoYbN78GWSq5rm"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTableTool",
+      "typeVersion": 1.1,
+      "position": [
+        4912,
+        176
+      ],
+      "id": "667ff890-ab50-4827-a088-a2e8d754c2f3",
+      "name": "Insert Long-Term Memory1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a machine learning clustering agent.\n\nPerform hyperparameter tuning, model training, cluster assignment, and compute relevant quality metrics for a clustering task.\n\nUse the EXEC tool only for:\n- loading data\n- splitting\n- hyperparameter tuning\n- training\n- cluster assignment\n- metric calculation\n- saving results (model, metrics, plots)\n\nTOOLS :\n@tool GET EMBS\n@tool LIB INSTALL\n@tool EXEC\n\nINPUT:\nAnalytic note: {{ $json.content }}\n\n\"dataset_path\": \"/app/data/featured_dataset.csv\"\n\n(The input contains a path to the dataset and might contain an analytical note from previous EDA/analysis. Use the note for additional context - e.g., known data issues, feature descriptions, presence of true cluster labels - but do not re-execute any EDA steps and do not apply any preprocessing; assume the data is already clean.)\n\nRULES:\n- Never fabricate results.\n- This is an unsupervised clustering task. The target is not used for training, but ground‑truth labels may exist for external evaluation.\n- Auto‑detect a column with true labels (case‑insensitive match: 'label', 'class', 'cluster', 'target', 'true_labels'). If such a column exists, treat it as external ground truth; otherwise, no external labels are available.\n- Use train/validation/test split (60/20/20) stratified on true labels if they exist, otherwise perform a plain random split with random_state=42.\n- Perform hyperparameter tuning using cross‑validation (where applicable) only on the training set. The validation set is used only for final model comparison.\n- Do not leak test data into tuning or training.\n- Save the best model as .pkl in /app/data/models/\n- Save all plots as PNG in /app/data/plots/\n- Return the final JSON after analysis, including the best model path.\n\nTASKS:\n\n\n1. Load dataset\n   - Read CSV from the path given in INPUT.\n   - Get shape, column names, types.\n\n\n\n2. Identify features and (optional) true labels\n   - If a column with external cluster labels is present, separate it as y_true and keep it only for evaluation.\n   - All remaining columns are the feature matrix X.\n\n2.5 CREATE EMBEDDINGS USING TOOLS and concate with data !!!!\n\n3. Split data into train, validation, test\n   - If y_true exists:\n     - First split: train+val (80%) and test (20%) with stratification on y_true.\n     - Second split: from train+val into train (75% of train+val) and validation (25% of train+val), stratified on y_true.\n   - If no y_true:\n     - Same 80/20 and then test to 75/25 of train, without stratification (plain random split).\n\n4. Select candidate models\n   - Choose 3-4 clustering algorithms from the following list:\n     - KMeans\n     - DBSCAN\n   - Define a hyperparameter search space for each. For example, for KMeans you may use n_clusters [2, 3, …, 15], n_init [10, 20], max_iter [300, 500]. For DBSCAN use eps [0.1, 0.2, …, 2.0], min_samples [2, 3, …, 20], metric ['euclidean', 'manhattan']\n\n5. Hyperparameter tuning for each model\n   - For models that have a fit/predict API (KMeans, GaussianMixture):\n     - Use GridSearchCV or RandomizedSearchCV with a 5‑fold cross‑validation on X_train.\n     - The scoring function is silhouette_score (internal metric). Record the best parameters and the best CV silhouette score.\n   - For models without a native predict (AgglomerativeClustering, DBSCAN):\n     - Because cross‑validation with a disjoint test set is not straightforward, perform a grid search on the entire X_train by fitting the model and computing silhouette_score on X_train itself. Choose the parameters that yield the highest score.\n\n6. Select the best model\n   - For each tuned model, evaluate on the validation set X_val:\n     - If y_true exists, use adjusted_rand_score between predicted clusters and y_true_val as the primary metric. In case of a tie, fall back to silhouette_score on X_val.\n     - If no y_true, use silhouette_score on X_val as the primary metric.\n   - The model with the highest metric is selected as the best model.\n   - If there is a tie, prefer interpretability/speed: KMeans > GaussianMixture > AgglomerativeClustering > DBSCAN.\n   - Retrain the best model on the combined train+val set using its best hyperparameters.\n\n7. Predict on test set and evaluate\n   - For the best model, if it lacks a built‑in predict method, implement a wrapper:\n     - AgglomerativeClustering: assign each test point to the cluster whose centroid (mean of training points in that cluster) is nearest (Euclidean distance).\n     - DBSCAN: assign each test point to the cluster of the nearest core sample in the training data if the distance ≤ best eps; otherwise label it as -1 (noise).\n   - Generate cluster assignments for X_test.\n   - Compute quality metrics (at least 3). Here are the examples:\n     - Internal metrics (always computed on X_test):\n       - silhouette_score\n       - calinski_harabasz_score\n       - davies_bouldin_score\n     - External metrics (only if y_true exists, using y_true_test). The examples:\n       - adjusted_rand_score\n       - normalized_mutual_info_score\n       - homogeneity_score\n       - completeness_score\n       - v_measure_score\n   - Generate plots and save them as PNG:\n     - silhouette_plot.png: silhouette scores per cluster.\n     - pca_clusters.png: first two PCA components of the test set, colored by predicted cluster (and by true labels if available, in a separate subplot).\n     - elbow_curve.png: for KMeans (and only if KMeans is the best model), show inertia vs n_clusters computed on the combined train+val set.\n     - If y_true exists: confusion_matrix_clusters.png – a confusion‑matrix‑like plot between true labels and predicted clusters (note: the color scale represents counts, not exact class mapping; use a heatmap with labels).\n   - Save test predictions CSV (/app/data/test_clusters.csv) with columns: sample_index, predicted_cluster (and true_label if available).\n\n8. Save outputs\n   - Best model (including any prediction wrapper) as /app/data/models/best_model.pkl.\n   - Test metrics as JSON: /app/data/test_metrics.json.\n   - All plots saved under /app/data/plots/ with the names described above.\n\n9. Return final JSON with the following structure:\n```json\n{\n  \"dataset_shape\": [rows, columns],\n  \"has_ground_truth\": true/false,\n  \"split_sizes\": {\"train\": n, \"val\": n, \"test\": n},\n  \"candidate_models_tried\": [\"KMeans\", \"GaussianMixture\", …],\n  \"best_model_name\": \"string\",\n  \"best_hyperparameters\": {…},\n  \"test_metrics\": {\n    \"silhouette_score\": float,\n    \"calinski_harabasz_score\": float,\n    \"davies_bouldin_score\": float,\n    // present only if ground truth exists:\n    \"adjusted_rand_score\": float,\n    \"normalized_mutual_info\": float,\n    \"homogeneity\": float,\n    \"completeness\": float,\n    \"v_measure\": float\n  },\n  \"saved_plots\": [\"/app/data/plots/silhouette_plot.png\", …],\n  \"model_path\": \"/app/data/models/best_model.pkl\",\n  \"warnings\": [\"list of issues, e.g., many noise points in DBSCAN, possible overfitting, low silhouette score\"]\n}",
+        "options": {
+          "maxIterations": 30
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        4112,
+        352
+      ],
+      "id": "66867140-80ef-4aca-8129-965c1b60647e",
+      "name": "AI Agent2"
+    },
+    {
+      "parameters": {
+        "model": "qwen3.5:397b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        3888,
+        560
+      ],
+      "id": "b476ac03-c244-4e6e-acd9-1b7e1687753b",
+      "name": "Ollama Chat Model5",
+      "credentials": {
+        "ollamaApi": {
+          "id": "K3ZYQX7oQlYxbRn2",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to use python on server\n\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/execute",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Python code to execute`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        4608,
+        528
+      ],
+      "id": "11ccb181-e4b5-40e4-acc4-bbfdfb996849",
+      "name": "@tool EXEC8"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "VALoYbN78GWSq5rm",
+          "mode": "list",
+          "cachedResultName": "Long-term memory",
+          "cachedResultUrl": "/projects/Y7XaIgJ0gQlkjHPK/datatables/VALoYbN78GWSq5rm"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTableTool",
+      "typeVersion": 1.1,
+      "position": [
+        4064,
+        624
+      ],
+      "id": "4550644c-1563-4cc2-82b3-494b4f912bb7",
+      "name": "Insert Long-Term Memory2"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a data analysis agent.\nDo bivariate analysis on a cleaned dataset using ONLY EXEC tool.\n\nInput CSV path:\n{{ $('Cleaning Agent').item.json.output }}\n\nRules\nAll code runs ONLY in EXEC using @tool EXEC3\nDo NOT fabricate anything\nSave all plots to: /app/data/plots/bivariate/\nFinish fully and return final JSON + short insight text\nSteps\n1. Load data + setup\nimport pandas, numpy, matplotlib (Agg), seaborn, os\nimport PCA from sklearn.decomposition\nimport StandardScaler from sklearn.preprocessing\ncreate plots folder\nread CSV\nsplit numeric and categorical columns\nprint dataset shape and columns\n2. Correlations\ncompute Pearson + Spearman matrices\nprint both\ncreate and save 2 heatmaps:\npearson_heatmap.png\nspearman_heatmap.png\n3. Pairplot\nuse all numeric columns\nif target exists  and is categorical (or previously encoded categorical) — use as hue\nsave pairplot.png\n4. PCA visualization (2D)\n\nPerform PCA on numeric features (do NOT include target feature in any PCA components):\n\nuse numeric columns only (do NOT use target)\ndrop rows with missing values in numeric features\nstandardize features using StandardScaler\nreduce dimensions to 2 using PCA\n\nCreate scatter plot:\n\nX axis — PCA component 1\nY axis — PCA component 2\n\nAdditionally encode up to 2 extra features:\n\ncolor — target column if exists\nsize — PCA component 3\n\nRequirements:\n\nlegend is REQUIRED\naxis labels must include explained variance ratio\ntitle: PCA Visualization\nsave as:\npca_visualization.png\n\nIf there are no categorical columns:\n\nuse default color grouping\nstill create PCA plot\n\nPrint explained variance ratio.\n\n5. Correlation report\n\nFor each numeric pair:\n\ncompute Pearson + Spearman\nclassify:\nextra strong  ≥ 0.9\nstrong ≥ 0.8\nmoderate ≥ 0.6\nweak < 0.6\nstore results\n6. Scatter plots\n\nFor pairs with |Pearson| ≥ 0.6\n\nsave scatter plot for each pair\n7. List saved files\n\nPrint all files from /app/data/plots/bivariate\n\nFinal output (NO MORE CODE AFTER THIS)\n\nReturn JSON:\n\nplots_dir\nplots list\nnumeric_columns\ncorrelation_report\nstrong_pairs\nmoderate_pairs\nweak_pairs\npca_explained_variance\npca_features_used\n\nThen write 5–7 sentences:\n\nstrongest and weakest relationships\nlinear vs non-linear patterns\npairplot insights\nPCA cluster structure\nmulticollinearity risks\nExecution rule\n\nStart immediately.\nNo explanations.\nNo planning.\nNo prefaces.\n\nCRITICAL BEHAVIOR RULES: - DO NOT describe what you are going to do - DO NOT write \"I will now...\", \"Let me...\", \"I'll start by...\", \"Next I will...\" - DO NOT announce steps before executing them - JUST EXECUTE — call EXEC tool immediately without any preamble - After all tools are done — return final JSON and description IMMEDIATELY",
+        "options": {
+          "maxIterations": 20,
+          "returnIntermediateSteps": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1680,
+        -64
+      ],
+      "id": "a3a7b2fd-73ed-497a-a194-4d7f6445b6e7",
+      "name": "Multivariate"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gemma4:31b",
+          "mode": "list",
+          "cachedResultName": "gemma4:31b"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "Суммаризируй, сделай аналитическую записку из нескольких выводов. она нужна для обучения моделей. "
+            },
+            {
+              "content": "={{ $('Feature Engineering').item.json.output }}\n\n{{ $('Multivariate').item.json.output }}\n\n{{ $('Uni variate').item.json.output }}\n\n\n{{ $('Cleaning Agent').item.json.output }}\n\n{{ $('AI Agent merge').item.json.output }}\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.ollama",
+      "typeVersion": 1,
+      "position": [
+        3088,
+        -64
+      ],
+      "id": "555eb2c8-754a-4a04-8637-4741e0bccd60",
+      "name": "Message a model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "lseuwCj8Q4vbiBJx",
+          "name": "Ollama account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Create normalized text embeddings using intfloat/multilingual-e5-small. Use this tool for semantic similarity, semantic search, clustering texts, vector features, and comparing text meaning.",
+        "method": "POST",
+        "url": "http://fastapi:8000/embeddings/create",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"texts\": [\"{{ $fromAI('text', 'Single text to create embedding for', 'string') }}\"]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        4464,
+        640
+      ],
+      "id": "28a45e4d-eca9-4961-858c-8784747283ff",
+      "name": "@tool GET EMBS"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Устанавливает недостающие Python-библиотеки в FastAPI контейнер. Используй, если в Python-коде не хватает библиотеки. За один запрос можно передать максимум 20 пакетов. Передавай только pip-названия пакетов, например lightgbm или xgboost==2.0.3.\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/packages/install",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"package\": \"{{ $fromAI('package', 'One Python pip package name to install, for example python-slugify, lightgbm, or xgboost==2.0.3', 'string') }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        4256,
+        704
+      ],
+      "id": "c49ceb3b-dfd0-4150-bfce-9a4a60fa2456",
+      "name": "@tool LIB INSTALL"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Create normalized text embeddings using intfloat/multilingual-e5-small. Use this tool for semantic similarity, semantic search, clustering texts, vector features, and comparing text meaning.",
+        "method": "POST",
+        "url": "http://fastapi:8000/embeddings/create",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"texts\": [\"{{ $fromAI('text', 'Single text to create embedding for', 'string') }}\"]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        5472,
+        96
+      ],
+      "id": "3d0cf080-40a4-4f5f-8689-eb98ec924da3",
+      "name": "@tool GET EMBS1"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Устанавливает недостающие Python-библиотеки в FastAPI контейнер. Используй, если в Python-коде не хватает библиотеки. За один запрос можно передать максимум 20 пакетов. Передавай только pip-названия пакетов, например lightgbm или xgboost==2.0.3.\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/packages/install",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"package\": \"{{ $fromAI('package', 'One Python pip package name to install, for example python-slugify, lightgbm, or xgboost==2.0.3', 'string') }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        5264,
+        160
+      ],
+      "id": "b8419e4f-c44f-42a9-a366-973f6e5524dd",
+      "name": "@tool LIB INSTALL1"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Create normalized text embeddings using intfloat/multilingual-e5-small. Use this tool for semantic similarity, semantic search, clustering texts, vector features, and comparing text meaning.",
+        "method": "POST",
+        "url": "http://fastapi:8000/embeddings/create",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"texts\": [\"{{ $fromAI('text', 'Single text to create embedding for', 'string') }}\"]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        4752,
+        -448
+      ],
+      "id": "9c7eaa34-29c9-4083-a8d3-f18384f6b118",
+      "name": "@tool GET EMBS2"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Устанавливает недостающие Python-библиотеки в FastAPI контейнер. Используй, если в Python-коде не хватает библиотеки. За один запрос можно передать максимум 20 пакетов. Передавай только pip-названия пакетов, например lightgbm или xgboost==2.0.3.\n",
+        "method": "POST",
+        "url": "http://fastapi:8000/packages/install",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"package\": \"{{ $fromAI('package', 'One Python pip package name to install, for example python-slugify, lightgbm, or xgboost==2.0.3', 'string') }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        4544,
+        -384
+      ],
+      "id": "16507134-5c55-42d8-83fa-7b60a2fd488e",
+      "name": "@tool LIB INSTALL2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC": {
+      "ai_tool": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool GET FILES": {
+      "ai_tool": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Downloader AGENT": {
+      "main": [
+        [
+          {
+            "node": "AI Agent merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemma4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Cleaning Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download dataset": {
+      "ai_tool": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleaning Agent": {
+      "main": [
+        [
+          {
+            "node": "Uni variate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Uni variate",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC2": {
+      "ai_tool": [
+        [
+          {
+            "node": "Uni variate",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Uni variate": {
+      "main": [
+        [
+          {
+            "node": "Multivariate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Multivariate",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC3": {
+      "ai_tool": [
+        [
+          {
+            "node": "Multivariate",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Feature Engineering",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC4": {
+      "ai_tool": [
+        [
+          {
+            "node": "Feature Engineering",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool GET FILES1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Feature Engineering",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Feature Engineering": {
+      "main": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Information Extractor": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Complex memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Cleaning Agent",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Uni variate",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Multivariate",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Feature Engineering",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "AI Agent merge",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool GET FILES2": {
+      "ai_tool": [
+        [
+          {
+            "node": "Cleaning Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool merge": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent merge",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent merge": {
+      "main": [
+        [
+          {
+            "node": "Cleaning Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Downloader AGENT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool GET FILES3": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent merge",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC5": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent merge",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "gpt-oss 120b": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Cleaning Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "gpt-oss:120b": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent merge",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC6": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Long-Term Memory": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC7": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Long-Term Memory1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool EXEC8": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Long-Term Memory2": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Multivariate": {
+      "main": [
+        [
+          {
+            "node": "Feature Engineering",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool LIB INSTALL": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool GET EMBS": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool LIB INSTALL1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool GET EMBS1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool LIB INSTALL2": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "@tool GET EMBS2": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "74b2c3c9-a7e5-4c35-ae8f-e9503d407440",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "448ac833fd3e70a1638f7923f54c0cefb8016acb285d5c84b2d2100f6980c11e"
+  },
+  "id": "ILgV6nq94WxVeacz",
+  "tags": []
+}
