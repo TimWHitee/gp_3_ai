@@ -44,10 +44,6 @@ class DuckDuckGoSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=300)
     max_results: int = Field(default=5, ge=1, le=10)
 
-class MergeRequest(BaseModel):
-    dataset1_path: str
-    dataset2_path: str
-    merge_field: str
 
 class DuckDuckGoHTMLParser(HTMLParser):
     def __init__(self):
@@ -259,16 +255,25 @@ async def execute(req: ExecuteRequest):
 async def health():
     return {"status": "ok"}
 
+class MergeRequest(BaseModel):
+    dataset1_path: str
+    dataset2_path: str
+    merge_field: str | None = None  # если None — вертикальный concat
+
 @app.post("/merge")
 async def merge(req: MergeRequest):
     try:
         df1 = pd.read_csv(req.dataset1_path)
         df2 = pd.read_csv(req.dataset2_path)
-        merged = df1.merge(df2, on=req.merge_field, how="inner", suffixes=("_1", "_2"))
-        
+
+        if req.merge_field:
+            merged = df1.merge(df2, on=req.merge_field, how="inner", suffixes=("_1", "_2"))
+        else:
+            merged = pd.concat([df1, df2], ignore_index=True)
+
         output_path = "/app/data/merged_dataset.csv"
-        merged.to_csv(output_path, index=False)  # <- этого не было
-        
+        merged.to_csv(output_path, index=False)
+
         return {
             "success": True,
             "merged_path": output_path,
