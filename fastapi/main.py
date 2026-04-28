@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import contextlib
 from functools import lru_cache
@@ -177,12 +177,13 @@ def get_embedding_model():
 def get_embeddings(texts: list[str]):
     model = get_embedding_model()
     prefixed_texts = ["passage: " + str(text) for text in texts]
-    return model.encode(
+    embeddings = model.encode(
         prefixed_texts,
         normalize_embeddings=True,
         batch_size=32,
         show_progress_bar=False,
     )
+    return embeddings[:, :10]
 
 
 def search_duckduckgo(query: str, max_results: int) -> list[dict]:
@@ -224,6 +225,25 @@ def clear_data() -> list[dict]:
             child.unlink(missing_ok=True)
         deleted.append(item)
     return deleted
+
+
+def download_file(url: str, output_path: Path) -> int:
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (compatible; gp3-ai-agent/1.0)",
+        },
+    )
+    total_bytes = 0
+    with urlopen(request, timeout=1800) as response:
+        with output_path.open("wb") as file:
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                file.write(chunk)
+                total_bytes += len(chunk)
+    return total_bytes
 
 
 @app.post("/execute")
@@ -406,53 +426,46 @@ class DownloadDatasetRequest(BaseModel):
 
 @app.post("/data/download")
 async def download_dataset(req: DownloadDatasetRequest):
-    data_dir = Path("/app/data")
-    data_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        data_dir = Path("/app/data")
+        data_dir.mkdir(parents=True, exist_ok=True)
 
-    parsed_url = urlparse(req.url)
-    default_filename = Path(parsed_url.path).name or "dataset.zip"
-    filename = req.filename or default_filename
+        parsed_url = urlparse(req.url)
+        if parsed_url.scheme not in {"http", "https"}:
+            raise HTTPException(status_code=400, detail="Only http and https URLs are allowed")
 
-    if "/" in filename or "\\" in filename:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid filename",
-        )
+        default_filename = Path(unquote(parsed_url.path)).name or "dataset"
+        filename = req.filename or default_filename
 
-    output_path = data_dir / filename
+        if "/" in filename or "\\" in filename or filename in {"", ".", ".."}:
+            raise HTTPException(status_code=400, detail="Invalid filename")
 
-    command = [
-        "curl",
-        "-L",
-        "-o",
-        str(output_path),
-        req.url,
-    ]
+        output_path = data_dir / filename
+        downloaded_bytes = download_file(req.url, output_path)
 
-    result = run_command(command, timeout=1800)
+        if not output_path.exists():
+            return {
+                "success": False,
+                "url": req.url,
+                "error": "File was not created after download",
+            }
 
-    if result["returncode"] != 0:
         return {
-            "success": False,
+            "success": True,
             "url": req.url,
             "path": str(output_path),
-            "download": result,
+            "filename": filename,
+            "size_kb": round(output_path.stat().st_size / 1024, 1),
+            "downloaded_bytes": downloaded_bytes,
         }
-
-    if not output_path.exists():
+    except HTTPException:
+        raise
+    except Exception:
         return {
             "success": False,
             "url": req.url,
-            "error": "File was not created after download",
+            "error": traceback.format_exc(),
         }
-
-    return {
-        "success": True,
-        "url": req.url,
-        "path": str(output_path),
-        "size_kb": round(output_path.stat().st_size / 1024, 1),
-        "download": result,
-    }
 
 
 class CleanDatasetRequest(BaseModel):
